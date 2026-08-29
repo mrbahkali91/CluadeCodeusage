@@ -93,7 +93,9 @@ class District(Base):
     name_en: Mapped[str] = mapped_column(String(120))
     name_ar: Mapped[str] = mapped_column(String(120))
     centroid: Mapped[object] = mapped_column(Geography("POINT", srid=4326, spatial_index=False))
-    boundary: Mapped[object | None] = mapped_column(Geography("POLYGON", srid=4326, spatial_index=False), nullable=True)
+    boundary: Mapped[object | None] = mapped_column(
+        Geography("POLYGON", srid=4326, spatial_index=False), nullable=True
+    )
     boundary_precision: Mapped[str] = mapped_column(String(24), default="APPROXIMATE")
     liquidity_score: Mapped[float] = mapped_column(Numeric(5, 2), default=50)
     location_score: Mapped[float] = mapped_column(Numeric(5, 2), default=50)
