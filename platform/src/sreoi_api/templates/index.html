@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Opportunities{% endblock %}
+{% block content %}
+<h1>Opportunities</h1>
+<p class="muted">Ranked by opportunity score. Classification honours the confidence gate:
+below 60% data confidence no recommendation is shown at all.</p>
+
+{% if not opportunities %}
+  <div class="panel"><p class="muted">No opportunities yet. Submit one via
+  <code>POST /api/v1/opportunities</code>.</p></div>
+{% endif %}
+
+{% for o in opportunities %}
+<a class="card" href="/opportunities/{{ o.id }}">
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <div>
+        <div style="font-weight:640;font-size:16px">{{ o.title }}</div>
+        <div class="muted" style="font-size:13px;margin-top:2px">
+          {{ o.opportunity_type|replace('_',' ')|title }} ·
+          {{ o.district or 'unknown district' }} · {{ o.property_class|title }} ·
+          {{ '%.0f'|format(o.area_sqm) }} m²
+        </div>
+      </div>
+      <div style="text-align:right">
+        {% if o.classification == 'INSUFFICIENT_DATA' %}
+          <span class="pill warn">⚠ Insufficient data</span>
+        {% elif o.score and o.score >= 80 %}
+          <span class="pill good">▲ {{ '%.0f'|format(o.score) }} / 100</span>
+        {% elif o.score and o.score >= 60 %}
+          <span class="pill warn">◆ {{ '%.0f'|format(o.score) }} / 100</span>
+        {% else %}
+          <span class="pill bad">▼ {{ '%.0f'|format(o.score or 0) }} / 100</span>
+        {% endif %}
+        <div class="muted" style="font-size:12px;margin-top:4px">
+          confidence {{ '%.0f'|format((o.data_confidence or 0)*100) }}%</div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="stat"><div class="k">True acquisition cost</div>
+        <div class="v">{% if o.true_acquisition_cost %}SAR {{ '{:,.0f}'.format(o.true_acquisition_cost) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Estimated market value</div>
+        <div class="v">{% if o.fair_value_base %}SAR {{ '{:,.0f}'.format(o.fair_value_base) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Discount</div>
+        <div class="v">{% if o.discount_percent is not none %}{{ '%.1f'|format(o.discount_percent) }}%{% else %}<span class="muted" style="font-size:14px">Refused</span>{% endif %}</div>
+        {% if o.discount_refused_reason %}<div class="n">{{ o.discount_refused_reason }}</div>{% endif %}</div>
+      <div class="stat"><div class="k">Price / m²</div>
+        <div class="v">{% if o.price_per_sqm %}SAR {{ '{:,.0f}'.format(o.price_per_sqm) }}{% else %}—{% endif %}</div></div>
+    </div>
+  </div>
+</a>
+{% endfor %}
+{% endblock %}

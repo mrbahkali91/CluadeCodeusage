@@ -1,0 +1,30 @@
+# Local development stack.
+#
+# NOTE: this file was written but NOT executed during Slice 1 — the build
+# environment had no Docker daemon, so PostGIS was installed natively instead.
+# Treat it as unverified until someone runs it.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: sreoi
+      POSTGRES_PASSWORD: sreoi
+      POSTGRES_DB: sreoi
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sreoi"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    command: uvicorn sreoi_api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      SREOI_DATABASE_URL: postgresql+psycopg://sreoi:sreoi@db:5432/sreoi
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+
+volumes:
+  pgdata:

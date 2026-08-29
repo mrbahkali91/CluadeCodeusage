@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}{{ o.title }}{% endblock %}
+{% block content %}
+
+{% if o.source_is_synthetic or (o.valuation and o.valuation.is_synthetic_evidence) %}
+<div class="banner">
+  <strong>Demonstration data.</strong> The comparable transactions behind this valuation come
+  from a <em>synthetic</em> fixture corpus, not real registered sales. Every figure below is
+  computed by the real engine, but the evidence is generated. Replaced by the Ministry of
+  Justice open-data loader once Assumption A-01 is validated.
+</div>
+{% endif %}
+
+<h1>{{ o.title }}</h1>
+<p class="muted">
+  {{ o.opportunity_type|replace('_',' ')|title }} · {{ o.district or 'unknown district' }} ·
+  {{ o.property_class|title }} · {{ '%.0f'|format(o.area_sqm) }} m² ·
+  location precision <code>{{ o.location_precision }}</code> · source <code>{{ o.source_key }}</code>
+</p>
+
+<div class="panel">
+  <h2>Assessment</h2>
+  {% if o.score_detail %}
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    {% set cls = o.score_detail.classification %}
+    {% if cls == 'INSUFFICIENT_DATA' %}<span class="pill warn">⚠ Insufficient data</span>
+    {% elif o.score_detail.total >= 80 %}<span class="pill good">▲ {{ o.score_detail.classification_label }}</span>
+    {% elif o.score_detail.total >= 60 %}<span class="pill warn">◆ {{ o.score_detail.classification_label }}</span>
+    {% else %}<span class="pill bad">▼ {{ o.score_detail.classification_label }}</span>{% endif %}
+    <span style="font-size:26px;font-weight:660">{{ '%.1f'|format(o.score_detail.total) }}<span class="muted" style="font-size:15px"> / 100</span></span>
+    <span class="muted">data confidence {{ '%.0f'|format(o.score_detail.data_confidence*100) }}%</span>
+    {% if o.score_detail.capped %}<span class="pill warn">capped by confidence gate</span>{% endif %}
+  </div>
+  {% if cls == 'INSUFFICIENT_DATA' %}
+  <div class="refused"><strong>No recommendation is shown.</strong> Data confidence
+    ({{ '%.1f'|format(o.score_detail.data_confidence*100) }}%) is below the 60% floor, so this
+    opportunity is stored and monitored rather than rated. The underlying score of
+    {{ '%.1f'|format(o.score_detail.total) }} is shown below for transparency but should not be
+    acted on.</div>
+  {% endif %}
+  {% if o.score_detail.confidence_gaps %}
+  <details style="margin-top:12px"><summary>What is holding confidence down</summary>
+    <div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>Input</th><th class="num">Value</th><th class="num">Weight</th>
+        <th class="num">Shortfall</th><th>Why</th></tr></thead>
+      <tbody>
+      {% for g in o.score_detail.confidence_gaps %}
+        <tr><td>{{ g.input_name|replace('_',' ')|title }}</td>
+            <td class="num">{{ '%.0f'|format(g.value*100) }}%</td>
+            <td class="num">{{ '%.2f'|format(g.weight) }}</td>
+            <td class="num">−{{ '%.3f'|format(g.shortfall) }}</td>
+            <td class="muted" style="font-size:12px">{{ g.explanation }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+  </details>
+  {% endif %}
+  {% endif %}
+
+  <div class="grid" style="margin-top:6px">
+    <div class="stat"><div class="k">True acquisition cost</div>
+      <div class="v">{% if o.cost.is_complete %}SAR {{ '{:,.0f}'.format(o.cost.total) }}{% else %}<span class="muted">incomplete</span>{% endif %}</div>
+      <div class="n">{{ '%.0f'|format(o.cost.completeness*100) }}% of material items known</div></div>
+    <div class="stat"><div class="k">Estimated market value</div>
+      <div class="v">{% if o.valuation %}SAR {{ '{:,.0f}'.format(o.valuation.fair_value_base) }}{% else %}—{% endif %}</div>
+      {% if o.valuation %}<div class="n">band {{ '{:,.0f}'.format(o.valuation.fair_value_low) }} – {{ '{:,.0f}'.format(o.valuation.fair_value_high) }}</div>{% endif %}</div>
+    <div class="stat"><div class="k">Discount</div>
+      <div class="v">{% if o.discount_percent is not none %}{{ '%.1f'|format(o.discount_percent) }}%{% else %}<span class="muted" style="font-size:15px">Refused</span>{% endif %}</div></div>
+    <div class="stat"><div class="k">Price / m²</div>
+      <div class="v">{% if o.price_per_sqm %}SAR {{ '{:,.0f}'.format(o.price_per_sqm) }}{% else %}—{% endif %}</div></div>
+  </div>
+
+  {% if o.discount_refused_reason %}
+  <div class="refused" style="margin-top:14px">
+    <strong>Discount refused.</strong> {{ o.discount_refused_reason }}.<br>
+    Comparing an advertised price against market value when a material cost is unknown is the
+    single most misleading calculation in this domain, so the platform declines to make it.
+  </div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>True acquisition cost</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Line item</th><th class="num">Amount</th><th>Basis</th><th>Material</th></tr></thead>
+    <tbody>
+    {% for i in o.cost.line_items %}
+      <tr>
+        <td>{{ i.kind|replace('_',' ')|title }}</td>
+        <td class="num">{% if i.amount.value is not none %}SAR {{ '{:,.0f}'.format(i.amount.value) }}{% else %}<span class="pill bad">UNKNOWN</span>{% endif %}</td>
+        <td><code>{{ i.amount.basis }}</code></td>
+        <td>{{ 'yes' if i.material else 'no' }}</td>
+      </tr>
+    {% endfor %}
+      <tr><td><strong>Total</strong></td>
+          <td class="num"><strong>SAR {{ '{:,.0f}'.format(o.cost.total) }}</strong></td>
+          <td colspan="2"><code>{{ o.cost.method_version }}</code></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+{% if o.score_detail %}
+<div class="panel">
+  <h2>Score derivation — reproducible</h2>
+  <p class="muted" style="margin-top:-6px">Weights <code>{{ o.score_detail.weight_profile_version }}</code>,
+     method <code>{{ o.score_detail.method_version }}</code>. Same inputs and same versions always
+     produce the identical score.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Dimension</th><th class="num">Raw</th><th class="num">Normalised</th>
+      <th class="num">Weight</th><th class="num">Contribution</th><th>Share</th></tr></thead>
+    <tbody>
+    {% for c in o.score_detail.components %}
+      <tr>
+        <td>{{ c.dimension|title }}</td>
+        <td class="num">{% if c.raw_value is not none %}{{ '%.4g'|format(c.raw_value) }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td class="num">{{ '%.1f'|format(c.normalized_score) }}</td>
+        <td class="num">{{ '%.2f'|format(c.weight) }}</td>
+        <td class="num">{{ '%.2f'|format(c.contribution) }}</td>
+        <td><div class="bar"><i style="width:{{ c.normalized_score }}%"></i></div></td>
+      </tr>
+    {% endfor %}
+      <tr><td colspan="4"><strong>Total</strong></td>
+          <td class="num"><strong>{{ '%.2f'|format(o.score_detail.total) }}</strong></td><td></td></tr>
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if o.valuation %}
+<div class="panel">
+  <h2>Valuation evidence</h2>
+  <div class="grid" style="margin-bottom:14px">
+    <div class="stat"><div class="k">Comparables used</div><div class="v">{{ o.valuation.comparable_count }}</div>
+      <div class="n">effective n {{ '%.2f'|format(o.valuation.effective_n) }}</div></div>
+    <div class="stat"><div class="k">Comparable quality</div><div class="v">{{ '%.2f'|format(o.valuation.comparable_quality) }}</div></div>
+    <div class="stat"><div class="k">Valuation confidence</div><div class="v">{{ '%.0f'|format(o.valuation.confidence*100) }}%</div></div>
+    <div class="stat"><div class="k">Index tier</div><div class="v" style="font-size:16px">{{ o.valuation.index_tier }}</div>
+      <div class="n">time-adjusted to today</div></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Transaction</th><th class="num">Price</th><th class="num">Area</th>
+      <th class="num">SAR/m²</th><th class="num">Adjusted</th><th class="num">Distance</th>
+      <th>Date</th><th class="num">Weight</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for c in o.comparables %}
+      <tr {% if not c.included %}class="muted"{% endif %}>
+        <td><code>{{ c.transaction_id.hex[:8] }}</code></td>
+        <td class="num">{{ '{:,.0f}'.format(c.price) }}</td>
+        <td class="num">{{ '%.0f'|format(c.area_sqm) }} m²</td>
+        <td class="num">{{ '{:,.0f}'.format(c.price_per_sqm) }}</td>
+        <td class="num">{{ '{:,.0f}'.format(c.adjusted_price_per_sqm) }}</td>
+        <td class="num">{{ '%.0f'|format(c.distance_m) }} m</td>
+        <td>{{ c.transacted_on }}</td>
+        <td class="num">{{ '%.3f'|format(c.weight) }}</td>
+        <td>{% if c.included %}<span class="muted">used</span>{% else %}<span class="pill bad">excluded</span>{% endif %}</td>
+      </tr>
+      {% if not c.included %}<tr><td colspan="9" class="muted" style="font-size:12px">↳ {{ c.excluded_reason }}</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="panel"><h2>Valuation evidence</h2>
+  <div class="refused">No valuation produced — insufficient comparable evidence. The platform
+  refuses to extrapolate a market value from too few transactions.</div></div>
+{% endif %}
+
+<div class="panel">
+  <h2>Provenance</h2>
+  <p class="muted" style="margin-top:-6px">Every stored field, where it came from, and how much we trust it.</p>
+  <details><summary>Show {{ provenance|length }} recorded fields</summary>
+    <div class="scroll" style="margin-top:12px"><table>
+      <thead><tr><th>Entity</th><th>Field</th><th>Value</th><th>Basis</th>
+        <th class="num">Confidence</th><th>Source</th><th>Evidence</th></tr></thead>
+      <tbody>
+      {% for p in provenance %}
+        <tr><td><code>{{ p.entity_table }}</code></td><td>{{ p.field_name|replace('_',' ')|lower }}</td>
+          <td>{{ p.value or '—' }}</td><td><code>{{ p.basis }}</code></td>
+          <td class="num">{{ '%.0f'|format(p.confidence*100) }}%</td>
+          <td><code>{{ p.source_key or '—' }}</code></td>
+          <td class="muted" style="font-size:12px">{{ p.evidence.locator if p.evidence else '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </details>
+</div>
+{% endblock %}

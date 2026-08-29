@@ -1,4 +1,7 @@
-# Saudi Real Estate Opportunity Intelligence — Phase 0
+# Saudi Real Estate Opportunity Intelligence
+
+**Phase 0 (Discovery) — complete.** **Slice 1 (vertical slice) — complete and running:
+see [SLICE-1.md](SLICE-1.md).**
 
 > Working name. The product name is treated as configuration (`PLATFORM_NAME`), not a hard-coded string.
 
@@ -11,6 +14,13 @@ granularity**. Phase 0 answers that before we spend engineering budget.
 It lives under `platform/` rather than the repository root `docs/` because that directory is
 the VitePress site for the unrelated `ccusage` tooling already in this monorepo; putting
 these documents there would break its build and confuse two products.
+
+## Running code
+
+Slice 1 takes an analyst submission through comparables, valuation, true acquisition cost and a
+deterministic opportunity score to an evidence-backed detail page. 70 tests, `mypy --strict`
+clean, reversible migrations, enforced architecture boundaries. Start at
+**[SLICE-1.md](SLICE-1.md)**.
 
 ## Read in this order
 

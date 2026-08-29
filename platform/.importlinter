@@ -1,0 +1,33 @@
+[importlinter]
+include_external_packages = True
+root_packages = sreoi_domain
+    sreoi_sources
+    sreoi_persistence
+    sreoi_pipeline
+    sreoi_api
+
+[importlinter:contract:layers]
+name = Layered architecture: domain is pure and sits beneath everything
+type = layers
+layers =
+    sreoi_api
+    sreoi_pipeline
+    sreoi_persistence
+    sreoi_sources
+    sreoi_domain
+
+[importlinter:contract:domain-purity]
+name = Domain must not import I/O, frameworks, or adapters (ADR-001)
+type = forbidden
+source_modules = sreoi_domain
+forbidden_modules =
+    sqlalchemy
+    fastapi
+    httpx
+    geoalchemy2
+    alembic
+    psycopg
+    sreoi_persistence
+    sreoi_sources
+    sreoi_pipeline
+    sreoi_api
