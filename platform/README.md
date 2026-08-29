@@ -3,6 +3,7 @@
 **Phase 0 (Discovery) — complete.**
 **Slice 1 — complete:** [SLICE-1.md](SLICE-1.md) (analyst entry → valuation → true cost → score).
 **Slice 2 — complete:** [SLICE-2.md](SLICE-2.md) (dedupe, timeline, filters, map, health, AR/EN).
+**Slice 4a — complete:** [SLICE-4.md](SLICE-4.md) (agent runtime, provider abstraction, injection defences, verification agent).
 
 > Working name. The product name is treated as configuration (`PLATFORM_NAME`), not a hard-coded string.
 
@@ -23,8 +24,8 @@ deterministic opportunity score to an evidence-backed detail page. Slice 2 adds 
 resolution across sources, append-only price history, filtered search, a PostGIS map, source
 health monitoring and full Arabic/RTL.
 
-**108 tests, `mypy --strict` clean over 43 files, reversible migrations, enforced architecture
-boundaries.** Start at **[SLICE-1.md](SLICE-1.md)**, then **[SLICE-2.md](SLICE-2.md)**.
+**150 tests (order-independent), `mypy --strict` clean over 52 files, reversible migrations,
+enforced architecture boundaries.** Start at **[SLICE-1.md](SLICE-1.md)**, then **[SLICE-2.md](SLICE-2.md)**.
 
 ## Read in this order
 

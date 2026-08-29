@@ -430,3 +430,64 @@ class SourceHealthCheck(Base):
     latency_ms: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AgentRun(Base):
+    """Every agent execution, recorded so it can be reconstructed afterwards."""
+
+    __tablename__ = "agent_runs"
+    __table_args__ = (Index("ix_agent_runs_agent_time", "agent", "started_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    agent: Mapped[str] = mapped_column(String(48))
+    subject_type: Mapped[str] = mapped_column(String(32))
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    input_hash: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(24))  # SUCCEEDED|FAILED|ABORTED|CACHED
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"))
+    duration_ms: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    injection_flagged: Mapped[bool] = mapped_column(default=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    decisions: Mapped[list[AgentDecision]] = relationship(back_populates="run")
+    llm_calls: Mapped[list[LLMCall]] = relationship(back_populates="run")
+
+
+class AgentDecision(Base):
+    """What the agent concluded, and on what basis."""
+
+    __tablename__ = "agent_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    agent_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_runs.id"))
+    kind: Mapped[str] = mapped_column(String(48))
+    outcome: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    run: Mapped[AgentRun] = relationship(back_populates="decisions")
+
+
+class LLMCall(Base):
+    """Cost control is a product requirement, so every call is accounted for."""
+
+    __tablename__ = "llm_calls"
+    __table_args__ = (Index("ix_llm_calls_time", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    agent_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_runs.id"))
+    provider: Mapped[str] = mapped_column(String(48))
+    model: Mapped[str] = mapped_column(String(64))
+    tier: Mapped[str] = mapped_column(String(16))
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"))
+    schema_valid: Mapped[bool] = mapped_column(default=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    run: Mapped[AgentRun] = relationship(back_populates="llm_calls")

@@ -42,7 +42,9 @@ def _count(session: Session, model: Any) -> int:
     return int(session.scalar(select(func.count()).select_from(model)) or 0)
 
 
-def test_same_unit_from_two_sources_resolves_to_one_property(session: Session) -> None:
+def test_same_unit_from_two_sources_resolves_to_one_property(
+    isolated: None, session: Session
+) -> None:
     first, _ = ingest_manual_submission(
         session, {**BASE, "external_id": "res-a", "title": "Assignment Sidrah B-402"}
     )
@@ -67,7 +69,7 @@ def test_same_unit_from_two_sources_resolves_to_one_property(session: Session) -
     assert merges[0].components, "the decision must expose its components"
 
 
-def test_different_unit_stays_separate(session: Session) -> None:
+def test_different_unit_stays_separate(isolated: None, session: Session) -> None:
     first, _ = ingest_manual_submission(session, {**BASE, "external_id": "res-c"})
     other, _ = ingest_manual_submission(
         session,
@@ -84,7 +86,9 @@ def test_different_unit_stays_separate(session: Session) -> None:
     assert other.property_id != first.property_id
 
 
-def test_relisting_creates_a_snapshot_not_a_duplicate_opportunity(session: Session) -> None:
+def test_relisting_creates_a_snapshot_not_a_duplicate_opportunity(
+    isolated: None, session: Session
+) -> None:
     opportunity, _ = ingest_manual_submission(
         session, {**BASE, "external_id": "snap-a", "title": "Assignment"}
     )
@@ -107,7 +111,9 @@ def test_relisting_creates_a_snapshot_not_a_duplicate_opportunity(session: Sessi
     assert {float(s.asking_price) for s in snapshots if s.asking_price} == {120000.0, 108000.0}
 
 
-def test_price_reduction_emits_a_timeline_event_and_signal(session: Session) -> None:
+def test_price_reduction_emits_a_timeline_event_and_signal(
+    isolated: None, session: Session
+) -> None:
     opportunity, _ = ingest_manual_submission(session, {**BASE, "external_id": "cut-a"})
     ingest_manual_submission(session, {**BASE, "external_id": "cut-a", "seller_payment": 96000})
     session.flush()
@@ -132,7 +138,7 @@ def test_price_reduction_emits_a_timeline_event_and_signal(session: Session) -> 
     assert "REDUCED" in latest.signal_tags
 
 
-def test_only_one_current_score_survives_re_evaluation(session: Session) -> None:
+def test_only_one_current_score_survives_re_evaluation(isolated: None, session: Session) -> None:
     opportunity, _ = ingest_manual_submission(session, {**BASE, "external_id": "score-a"})
     ingest_manual_submission(session, {**BASE, "external_id": "score-a", "seller_payment": 111000})
     session.flush()
@@ -145,7 +151,7 @@ def test_only_one_current_score_survives_re_evaluation(session: Session) -> None
     assert len(current) == 1, "exactly one score is current"
 
 
-def test_timeline_records_the_full_story(session: Session) -> None:
+def test_timeline_records_the_full_story(isolated: None, session: Session) -> None:
     opportunity, _ = ingest_manual_submission(session, {**BASE, "external_id": "tl-a"})
     session.flush()
     kinds = {
@@ -162,7 +168,7 @@ def test_timeline_records_the_full_story(session: Session) -> None:
     assert TimelineEvent.SCORED in kinds
 
 
-def test_merged_property_is_enriched_not_overwritten(session: Session) -> None:
+def test_merged_property_is_enriched_not_overwritten(isolated: None, session: Session) -> None:
     sparse = {**BASE, "external_id": "enrich-a"}
     sparse.pop("build_year")
     first, _ = ingest_manual_submission(session, sparse)

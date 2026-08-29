@@ -3,6 +3,7 @@ include_external_packages = True
 root_packages = sreoi_domain
     sreoi_sources
     sreoi_persistence
+    sreoi_agents
     sreoi_pipeline
     sreoi_api
 
@@ -12,6 +13,7 @@ type = layers
 layers =
     sreoi_api
     sreoi_pipeline
+    sreoi_agents
     sreoi_persistence
     sreoi_sources
     sreoi_domain
@@ -29,5 +31,6 @@ forbidden_modules =
     psycopg
     sreoi_persistence
     sreoi_sources
+    sreoi_agents
     sreoi_pipeline
     sreoi_api

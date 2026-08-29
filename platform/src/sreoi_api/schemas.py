@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -124,6 +125,27 @@ class OpportunityDetail(OpportunitySummary):
     cost: TrueCostOut
     score_detail: ScoreOut | None
     comparables: list[ComparableOut]
+
+
+class VerificationCheckOut(BaseModel):
+    check_type: str
+    check_class: str
+    status: str
+    summary: str
+    evidence: dict[str, Any] | None = None
+    checked_at: str
+
+
+class VerificationOut(BaseModel):
+    verification_score: float
+    internal_score: float
+    official_score: float
+    official_available: bool
+    ceiling_reason: str | None
+    method_version: str
+    headline: str | None
+    concerns: list[str]
+    checks: list[VerificationCheckOut]
 
 
 class ProvenanceEntry(BaseModel):

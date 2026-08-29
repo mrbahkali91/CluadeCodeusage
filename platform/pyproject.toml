@@ -17,7 +17,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6", "mypy>=1.11", "import-linter>=2.0"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-randomly>=3.15",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "import-linter>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -36,6 +43,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "N", "RUF"]
 ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
+# En dashes are intentional typography in user-facing summaries.
+"src/sreoi_agents/checkers.py" = ["RUF001"]
 # Translation strings are single logical units; wrapping them hurts readability
 # and makes diffs of catalogue changes unreadable.
 "src/sreoi_api/i18n.py" = ["E501"]

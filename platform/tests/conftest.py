@@ -87,6 +87,44 @@ def seeded_db() -> Iterator[None]:
     reset_engine()
 
 
+# Mutable tables, in dependency order. Reference data (districts, sources,
+# transactions, price index) is deliberately preserved.
+_MUTABLE_TABLES = (
+    "property_timeline",
+    "listing_snapshots",
+    "listings",
+    "verification_checks",
+    "score_components",
+    "opportunity_scores",
+    "cost_line_items",
+    "true_acquisition_costs",
+    "valuation_comparables",
+    "valuations",
+    "agent_decisions",
+    "llm_calls",
+    "agent_runs",
+    "property_merges",
+    "opportunities",
+    "properties",
+)
+
+
+@pytest.fixture
+def isolated(seeded_db: None) -> Iterator[None]:
+    """Give a test an empty property graph.
+
+    API tests commit through their own sessions, so without this a test that
+    ingests a property can silently match one another module committed --
+    entity resolution then merges them and the assertions become order
+    dependent. Reference data is kept so seeding does not have to repeat.
+    """
+    from sreoi_persistence.db import session_scope
+
+    with session_scope() as db:
+        db.execute(text(f"TRUNCATE {', '.join(_MUTABLE_TABLES)} RESTART IDENTITY CASCADE"))
+    yield
+
+
 @pytest.fixture
 def session(seeded_db: None) -> Iterator[Session]:
     from sreoi_persistence.db import get_session_factory

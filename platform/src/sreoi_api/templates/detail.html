@@ -162,6 +162,43 @@
   refuses to extrapolate a market value from too few transactions.</div></div>
 {% endif %}
 
+{% if verification %}
+<div class="panel">
+  <h2>{{ t('detail.verification') }}</h2>
+  <div class="grid" style="margin-bottom:14px">
+    <div class="stat"><div class="k">{{ t('verif.score') }}</div>
+      <div class="v">{{ num(verification.verification_score*100) }}%</div>
+      {% if verification.ceiling_reason %}<div class="n">{{ t('verif.capped') }}</div>{% endif %}</div>
+    <div class="stat"><div class="k">{{ t('verif.internal') }}</div>
+      <div class="v">{{ num(verification.internal_score*100) }}%</div></div>
+    <div class="stat"><div class="k">{{ t('verif.official') }}</div>
+      <div class="v">{% if verification.official_available %}{{ num(verification.official_score*100) }}%{% else %}—{% endif %}</div>
+      {% if not verification.official_available %}<div class="n">not performed</div>{% endif %}</div>
+  </div>
+  {% if verification.ceiling_reason %}
+  <div class="banner" style="margin-bottom:14px">{{ verification.ceiling_reason }}</div>
+  {% endif %}
+  <div class="scroll"><table>
+    <thead><tr><th>{{ t('verif.status') }}</th><th>{{ t('verif.check') }}</th>
+      <th>{{ t('verif.class') }}</th><th>{{ t('verif.finding') }}</th></tr></thead>
+    <tbody>
+    {% for c in verification.checks %}
+      <tr>
+        <td>{% if c.status=='VERIFIED' %}<span class="pill good">✓ {{ c.status }}</span>
+            {% elif c.status in ['FAILED','CONFLICTED'] %}<span class="pill bad">✕ {{ c.status }}</span>
+            {% else %}<span class="pill warn">◌ {{ c.status }}</span>{% endif %}</td>
+        <td>{{ c.check_type.replace('_',' ')|title }}</td>
+        <td><code>{{ c.check_class }}</code></td>
+        <td class="muted" style="font-size:12px">{{ c.summary }}
+          {% if c.evidence %}<details><summary>evidence</summary>
+            <code style="white-space:pre-wrap">{{ c.evidence }}</code></details>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
 <div class="panel">
   <h2>{{ t('detail.timeline') }}</h2>
   <p class="muted" style="margin-top:-6px">Snapshots are append-only — a price change is a new

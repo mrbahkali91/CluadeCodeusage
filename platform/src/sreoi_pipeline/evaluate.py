@@ -17,6 +17,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from sreoi_agents.provider import DeterministicProvider
+from sreoi_agents.runtime import AgentContext
+from sreoi_agents.verification import (
+    VerificationReport,
+    deterministic_verification_responder,
+    verify_opportunity,
+)
 from sreoi_domain.cost import (
     CostKind,
     CostLineItem,
@@ -79,6 +86,7 @@ class EvaluationResult:
     discount: Discount | DiscountRefused
     score: OpportunityScore | None
     failure: str | None = None
+    verification: VerificationReport | None = None
 
 
 def content_hash(payload: dict[str, Any]) -> str:
@@ -318,11 +326,24 @@ def evaluate_opportunity(
     district = prop.district
     risk = _assess_risk(fair_value, cost, district_known=district is not None)
 
+    # Verification runs before scoring because its result feeds data confidence.
+    # Checks are deterministic; the agent only explains them.
+    verification = verify_opportunity(
+        session,
+        property_id=prop.id,
+        opportunity_id=opportunity.id,
+        listing_text=_listing_text(submission),
+        context=AgentContext(
+            session=session,
+            provider=DeterministicProvider(deterministic_verification_responder),
+        ),
+    )
+
     source_confidence = _source_confidence(session, opportunity)
     confidence_inputs = ConfidenceInputs(
         valuation_confidence=fair_value.confidence if fair_value else 0.0,
         cost_completeness=cost.completeness,
-        verification_score=0.0,  # Slice 4 wires the verification agent
+        verification_score=verification.verification_score,
         source_confidence=source_confidence,
         field_completeness=completeness,
     )
@@ -372,7 +393,15 @@ def evaluate_opportunity(
         discount=discount,
         score=score,
         failure=failure,
+        verification=verification,
     )
+
+
+def _listing_text(submission: dict[str, Any]) -> str | None:
+    """Attacker-controlled text. Passed to the agent only inside a data block."""
+    parts = [str(submission.get(f) or "") for f in ("title", "description")]
+    joined = " ".join(p for p in parts if p).strip()
+    return joined or None
 
 
 def _nearest_period(series: dict[str, float], period: str) -> float | None:

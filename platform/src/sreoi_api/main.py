@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
 from sreoi_api import queries
@@ -47,6 +47,7 @@ from sreoi_api.search import (
 )
 from sreoi_persistence.db import get_session_factory
 from sreoi_persistence.models import (
+    AgentRun,
     District,
     Opportunity,
     PropertyMerge,
@@ -341,6 +342,51 @@ def resolution_decisions(session: SessionDep, limit: int = 100) -> list[dict[str
     ]
 
 
+@app.get(f"{API_PREFIX}/opportunities/{{opportunity_id}}/verification")
+def get_verification(opportunity_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+    """Verification checks with their evidence, and what the score is capped at."""
+    result = queries.verification(session, _load(session, opportunity_id))
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no verification has been run")
+    return result.model_dump()
+
+
+@app.get(f"{API_PREFIX}/admin/agents")
+def admin_agents(session: SessionDep, limit: int = 200) -> dict[str, Any]:
+    """Agent runs and their cost. Cost control is a product requirement."""
+    runs = session.scalars(select(AgentRun).order_by(AgentRun.started_at.desc()).limit(limit)).all()
+    totals = session.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(AgentRun.cost_usd), 0),
+            func.coalesce(func.sum(func.cast(AgentRun.injection_flagged, Integer)), 0),
+        ).select_from(AgentRun)
+    ).one()
+    opportunities = session.scalar(select(func.count()).select_from(Opportunity)) or 1
+    return {
+        "total_runs": int(totals[0]),
+        "total_cost_usd": float(totals[1]),
+        "cost_per_opportunity_usd": round(float(totals[1]) / opportunities, 6),
+        "injection_flagged_runs": int(totals[2]),
+        "runs": [
+            {
+                "id": str(r.id),
+                "agent": r.agent,
+                "status": r.status,
+                "subject_type": r.subject_type,
+                "subject_id": str(r.subject_id) if r.subject_id else None,
+                "prompt_version": r.prompt_version,
+                "cost_usd": float(r.cost_usd),
+                "duration_ms": float(r.duration_ms) if r.duration_ms else None,
+                "injection_flagged": r.injection_flagged,
+                "error": r.error,
+                "started_at": r.started_at.isoformat(),
+            }
+            for r in runs
+        ],
+    }
+
+
 @app.get(f"{API_PREFIX}/admin/health")
 def admin_health(session: SessionDep) -> list[dict[str, Any]]:
     return [
@@ -439,6 +485,7 @@ def ui_detail(opportunity_id: uuid.UUID, request: Request, session: SessionDep) 
             **_ui_context(request),
             "o": queries.detail(session, opportunity),
             "provenance": queries.provenance(session, opportunity),
+            "verification": queries.verification(session, opportunity),
             "timeline": events,
         },
     )

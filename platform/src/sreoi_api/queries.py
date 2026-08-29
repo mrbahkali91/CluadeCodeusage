@@ -8,6 +8,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from sreoi_agents.checkers import METHOD_VERSION as VERIFICATION_METHOD
+from sreoi_agents.verification import INTERNAL_WEIGHT_CAP
 from sreoi_api.schemas import (
     ComparableOut,
     ConfidenceGap,
@@ -20,6 +22,8 @@ from sreoi_api.schemas import (
     ScoreOut,
     TrueCostOut,
     ValuationOut,
+    VerificationCheckOut,
+    VerificationOut,
 )
 from sreoi_domain.scoring import Classification
 from sreoi_persistence.models import (
@@ -30,11 +34,18 @@ from sreoi_persistence.models import (
     SourceRecord,
     TrueAcquisitionCostRow,
     Valuation,
+    VerificationCheck,
 )
 
 SYNTHETIC_SOURCE_KEY = "synthetic_fixture"
 
 # Weights of the data-confidence formula (domain scoring spec section 5.3).
+_UNAVAILABLE_SUMMARY = {
+    "rega_advertisement_licence": "REGA advertisement-licence inquiry not performed.",
+    "wafi_project_licence": "Wafi project verification not performed.",
+    "developer_registry": "Developer registry lookup not integrated.",
+}
+
 CONFIDENCE_WEIGHTS = {
     "valuation_confidence": 0.30,
     "cost_completeness": 0.20,
@@ -252,6 +263,68 @@ def detail(session: Session, opportunity: Opportunity) -> OpportunityDetail:
             else None
         ),
         comparables=comparables,
+    )
+
+
+def verification(session: Session, opportunity: Opportunity) -> VerificationOut | None:
+    """Latest verification outcome per check type."""
+    rows = session.scalars(
+        select(VerificationCheck)
+        .where(VerificationCheck.opportunity_id == opportunity.id)
+        .order_by(VerificationCheck.checked_at.desc())
+    ).all()
+    if not rows:
+        return None
+
+    latest: dict[str, VerificationCheck] = {}
+    for row in rows:
+        latest.setdefault(row.check_type, row)
+
+    checks: list[VerificationCheckOut] = []
+    internal_applicable = internal_verified = 0
+    official_applicable = official_verified = 0
+    for row in latest.values():
+        evidence = row.evidence or {}
+        check_class = str(evidence.get("check_class") or "OFFICIAL")
+        counts = row.status in {"VERIFIED", "FAILED", "CONFLICTED"}
+        if check_class == "INTERNAL" and counts:
+            internal_applicable += 1
+            internal_verified += row.status == "VERIFIED"
+        elif check_class == "OFFICIAL" and counts:
+            official_applicable += 1
+            official_verified += row.status == "VERIFIED"
+        checks.append(
+            VerificationCheckOut(
+                check_type=row.check_type,
+                check_class=check_class,
+                status=row.status,
+                summary=str(
+                    evidence.get("summary") or _UNAVAILABLE_SUMMARY.get(row.check_type, "")
+                ),
+                evidence=evidence.get("detail"),
+                checked_at=row.checked_at.isoformat(),
+            )
+        )
+
+    internal = internal_verified / internal_applicable if internal_applicable else 0.0
+    official = official_verified / official_applicable if official_applicable else 0.0
+    score = INTERNAL_WEIGHT_CAP * internal + (1 - INTERNAL_WEIGHT_CAP) * official
+
+    return VerificationOut(
+        verification_score=round(score, 4),
+        internal_score=round(internal, 4),
+        official_score=round(official, 4),
+        official_available=bool(official_applicable),
+        ceiling_reason=(
+            None
+            if official_applicable
+            else f"No official register is integrated yet, so verification is capped "
+            f"at {INTERNAL_WEIGHT_CAP:.0%} of its full weight."
+        ),
+        method_version=VERIFICATION_METHOD,
+        headline=None,
+        concerns=[c.summary for c in checks if c.status in {"FAILED", "CONFLICTED"}],
+        checks=sorted(checks, key=lambda c: (c.check_class, c.check_type)),
     )
 
 
