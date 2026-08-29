@@ -46,10 +46,16 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
-def ensure_postgis(engine: Engine | None = None) -> None:
+def ensure_extensions(engine: Engine | None = None) -> None:
+    """PostGIS for geospatial, pg_trgm for entity-resolution text similarity."""
     eng = engine or get_engine()
     with eng.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
+
+# Backwards-compatible alias.
+ensure_postgis = ensure_extensions
 
 
 def reset_engine() -> None:

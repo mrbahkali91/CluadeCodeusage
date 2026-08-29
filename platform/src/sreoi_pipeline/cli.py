@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sreoi_persistence.db import ensure_postgis, session_scope
+from sreoi_persistence.db import ensure_extensions, session_scope
 from sreoi_pipeline.ingest import ingest_manual_submission
 from sreoi_pipeline.seed import seed_all
 
@@ -70,19 +70,35 @@ DEMO_SUBMISSIONS: list[dict[str, object]] = [
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sreoi")
     parser.add_argument(
-        "command", choices=["seed", "demo", "reset-and-demo"], help="operation to run"
+        "command",
+        choices=["seed", "demo", "reset-and-demo", "corpus", "health"],
+        help="operation to run",
     )
-    parser.add_argument(
-        "--offline", action="store_true", help="skip the live KAPSARC index pull"
-    )
+    parser.add_argument("--offline", action="store_true", help="skip the live KAPSARC index pull")
     args = parser.parse_args(argv)
 
-    ensure_postgis()
+    ensure_extensions()
 
     if args.command in {"seed", "reset-and-demo"}:
         with session_scope() as session:
             counts = seed_all(session, live_index=not args.offline)
         print(f"seeded: {counts}")
+
+    if args.command == "corpus":
+        from sreoi_pipeline.demo import load_demo
+
+        with session_scope() as session:
+            print(f"corpus: {load_demo(session)}")
+
+    if args.command == "health":
+        from sreoi_pipeline.health import run_health_checks, source_statuses
+
+        with session_scope() as session:
+            run_health_checks(session)
+            session.flush()
+            for status in source_statuses(session):
+                latency = f"{status.latency_ms:.0f}ms" if status.latency_ms else "—"
+                print(f"  {status.key:20} {status.state:9} {latency:>8}  {status.detail or ''}")
 
     if args.command in {"demo", "reset-and-demo"}:
         with session_scope() as session:

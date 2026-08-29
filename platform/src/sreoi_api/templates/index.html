@@ -1,51 +1,116 @@
 {% extends "base.html" %}
-{% block title %}Opportunities{% endblock %}
+{% set page = 'list' %}
+{% block title %}{{ t('list.title') }}{% endblock %}
 {% block content %}
-<h1>Opportunities</h1>
-<p class="muted">Ranked by opportunity score. Classification honours the confidence gate:
-below 60% data confidence no recommendation is shown at all.</p>
+<h1>{{ t('list.title') }}</h1>
+<p class="muted">{{ t('list.subtitle') }}</p>
 
-{% if not opportunities %}
-  <div class="panel"><p class="muted">No opportunities yet. Submit one via
-  <code>POST /api/v1/opportunities</code>.</p></div>
-{% endif %}
+<div class="panel">
+  <h2>{{ t('filters.title') }}</h2>
+  <form class="filters" method="get" action="/">
+    <input type="hidden" name="lang" value="{{ locale }}">
+    <div>
+      <label for="district">{{ t('filters.district') }}</label>
+      <select id="district" name="district">
+        <option value="">—</option>
+        {% for d in districts %}
+        <option value="{{ d.name_en }}" {{ 'selected' if d.name_en in filters.districts }}>
+          {{ d.name_ar if locale=='ar' else d.name_en }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="opportunity_type">{{ t('filters.type') }}</label>
+      <select id="opportunity_type" name="opportunity_type">
+        <option value="">—</option>
+        {% for ty in types %}
+        <option value="{{ ty }}" {{ 'selected' if ty in filters.opportunity_types }}>
+          {{ t('otype.' ~ ty) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="max_cost">{{ t('filters.max_cost') }}</label>
+      <input id="max_cost" type="number" name="max_cost" min="0" step="50000"
+             value="{{ filters.max_cost or '' }}">
+    </div>
+    <div>
+      <label for="min_discount">{{ t('filters.min_discount') }}</label>
+      <input id="min_discount" type="number" name="min_discount" min="0" max="100" step="1"
+             value="{{ filters.min_discount_pct if filters.min_discount_pct is not none else '' }}">
+    </div>
+    <div>
+      <label for="min_score">{{ t('filters.min_score') }}</label>
+      <input id="min_score" type="number" name="min_score" min="0" max="100" step="1"
+             value="{{ filters.min_score if filters.min_score is not none else '' }}">
+    </div>
+    <div>
+      <label for="sort">{{ t('filters.sort') }}</label>
+      <select id="sort" name="sort">
+        {% for key, label in sorts.items() %}
+        <option value="{{ key }}" {{ 'selected' if filters.sort==key }}>{{ t('sort.' ~ key) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="hide_insufficient">&nbsp;</label>
+      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)">
+        <input id="hide_insufficient" type="checkbox" name="hide_insufficient" value="true"
+               {{ 'checked' if not filters.include_insufficient }}>
+        {{ t('filters.hide_insufficient') }}</label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button type="submit">{{ t('filters.apply') }}</button>
+      <a href="/?lang={{ locale }}"><button type="button" class="ghost">{{ t('filters.reset') }}</button></a>
+    </div>
+  </form>
+  {% if filters_applied %}
+  <div class="chips"><span class="muted" style="font-size:12px">{{ t('filters.interpreted') }}:</span>
+    {% for k, v in filters_applied.items() %}<span class="chip">{{ k }} = {{ v }}</span>{% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<p class="muted" style="font-size:13px">{{ t('list.showing') }} {{ num(opportunities|length) }}</p>
+
+{% if not opportunities %}<div class="panel"><p class="muted">{{ t('list.empty') }}</p></div>{% endif %}
 
 {% for o in opportunities %}
-<a class="card" href="/opportunities/{{ o.id }}">
+<a class="card" href="/opportunities/{{ o.id }}?lang={{ locale }}">
   <div class="panel">
     <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <div>
         <div style="font-weight:640;font-size:16px">{{ o.title }}</div>
         <div class="muted" style="font-size:13px;margin-top:2px">
-          {{ o.opportunity_type|replace('_',' ')|title }} ·
-          {{ o.district or 'unknown district' }} · {{ o.property_class|title }} ·
-          {{ '%.0f'|format(o.area_sqm) }} m²
+          {{ t('otype.' ~ o.opportunity_type) }} ·
+          {{ (o.district_ar if locale=='ar' else o.district) or '—' }} ·
+          {{ t('pclass.' ~ o.property_class) }} · {{ num(o.area_sqm) }} m²
         </div>
       </div>
-      <div style="text-align:right">
+      <div style="text-align:end">
         {% if o.classification == 'INSUFFICIENT_DATA' %}
-          <span class="pill warn">⚠ Insufficient data</span>
+          <span class="pill warn">⚠ {{ t('class.INSUFFICIENT_DATA') }}</span>
         {% elif o.score and o.score >= 80 %}
-          <span class="pill good">▲ {{ '%.0f'|format(o.score) }} / 100</span>
+          <span class="pill good">▲ {{ num(o.score, 0) }} / 100</span>
         {% elif o.score and o.score >= 60 %}
-          <span class="pill warn">◆ {{ '%.0f'|format(o.score) }} / 100</span>
+          <span class="pill warn">◆ {{ num(o.score, 0) }} / 100</span>
         {% else %}
-          <span class="pill bad">▼ {{ '%.0f'|format(o.score or 0) }} / 100</span>
+          <span class="pill bad">▼ {{ num(o.score or 0, 0) }} / 100</span>
         {% endif %}
         <div class="muted" style="font-size:12px;margin-top:4px">
-          confidence {{ '%.0f'|format((o.data_confidence or 0)*100) }}%</div>
+          {{ t('field.confidence') }} {{ num((o.data_confidence or 0)*100) }}%</div>
       </div>
     </div>
-    <div class="grid" style="margin-top:14px">
-      <div class="stat"><div class="k">True acquisition cost</div>
-        <div class="v">{% if o.true_acquisition_cost %}SAR {{ '{:,.0f}'.format(o.true_acquisition_cost) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Estimated market value</div>
-        <div class="v">{% if o.fair_value_base %}SAR {{ '{:,.0f}'.format(o.fair_value_base) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Discount</div>
-        <div class="v">{% if o.discount_percent is not none %}{{ '%.1f'|format(o.discount_percent) }}%{% else %}<span class="muted" style="font-size:14px">Refused</span>{% endif %}</div>
+    <div class="grid" style="margin-top:13px">
+      <div class="stat"><div class="k">{{ t('field.cost') }}</div>
+        <div class="v">{% if o.true_acquisition_cost %}SAR {{ num(o.true_acquisition_cost) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">{{ t('field.value') }}</div>
+        <div class="v">{% if o.fair_value_base %}SAR {{ num(o.fair_value_base) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">{{ t('field.discount') }}</div>
+        <div class="v">{% if o.discount_percent is not none %}{{ num(o.discount_percent, 1) }}%{% else %}<span class="muted" style="font-size:14px">{{ t('field.refused') }}</span>{% endif %}</div>
         {% if o.discount_refused_reason %}<div class="n">{{ o.discount_refused_reason }}</div>{% endif %}</div>
-      <div class="stat"><div class="k">Price / m²</div>
-        <div class="v">{% if o.price_per_sqm %}SAR {{ '{:,.0f}'.format(o.price_per_sqm) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">{{ t('field.ppsqm') }}</div>
+        <div class="v">{% if o.price_per_sqm %}SAR {{ num(o.price_per_sqm) }}{% else %}—{% endif %}</div></div>
     </div>
   </div>
 </a>

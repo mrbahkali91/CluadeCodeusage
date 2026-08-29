@@ -1,66 +1,94 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="{{ locale }}" dir="{{ dir }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Opportunity Intelligence{% endblock %}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<title>{% block title %}{{ t('brand') }}{% endblock %}</title>
 <style>
   :root {
-    --bg:#f6f7f9; --panel:#ffffff; --ink:#12181f; --muted:#5b6672; --line:#dfe4ea;
+    --bg:#f6f7f9; --panel:#fff; --ink:#12181f; --muted:#5b6672; --line:#dfe4ea;
     --good:#136f3f; --good-bg:#e7f5ec; --warn:#8a5a00; --warn-bg:#fdf3e0;
-    --bad:#a02128; --bad-bg:#fdeced; --accent:#1e3a5f;
+    --bad:#a02128; --bad-bg:#fdeced; --accent:#1e3a5f; --accent-ink:#1e3a5f;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#0f1419; --panel:#171d24; --ink:#e8edf2; --muted:#98a4b0; --line:#2a333d;
       --good:#5fce93; --good-bg:#13301f; --warn:#e0ab4d; --warn-bg:#332614;
-      --bad:#f0868c; --bad-bg:#331a1c; --accent:#8fb3dd; }
+      --bad:#f0868c; --bad-bg:#331a1c; --accent:#111a26; --accent-ink:#8fb3dd; }
   }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 ui-sans-serif,
-    system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Arabic",sans-serif; }
-  header { background:var(--accent); color:#fff; padding:14px 22px; display:flex;
-    justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
-  @media (prefers-color-scheme: dark) { header { background:#111a26; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.55 ui-sans-serif,
+    system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Arabic","Helvetica Neue",Arial,sans-serif; }
+  header { background:var(--accent); color:#fff; padding:12px 22px; display:flex;
+    justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; }
   header a { color:#fff; text-decoration:none; }
-  header .brand { font-weight:650; letter-spacing:.2px; }
-  header .sub { opacity:.75; font-size:12px; }
-  main { max-width:1180px; margin:0 auto; padding:22px; }
+  header nav { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header nav a { opacity:.85; font-size:13px; } header nav a:hover { opacity:1; }
+  header nav a.on { opacity:1; font-weight:640; border-bottom:2px solid rgba(255,255,255,.7); }
+  .brand { font-weight:650; } .sub { opacity:.72; font-size:12px; }
+  main { max-width:1240px; margin:0 auto; padding:20px 22px 48px; }
   .banner { border:1px solid var(--warn); background:var(--warn-bg); color:var(--warn);
-    padding:10px 14px; border-radius:6px; margin-bottom:18px; font-size:13px; }
+    padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:13px; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px;
-    padding:18px; margin-bottom:18px; }
-  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:15px; margin:0 0 12px;
-    text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    padding:16px 18px; margin-bottom:16px; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  h2 { font-size:13px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+  th,td { text-align:start; padding:7px 10px; border-bottom:1px solid var(--line); }
   th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-  td.num, th.num { text-align:right; }
+  td.num, th.num { text-align:end; }
   .scroll { overflow-x:auto; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; }
   .stat .k { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-  .stat .v { font-size:20px; font-weight:640; margin-top:3px; }
+  .stat .v { font-size:19px; font-weight:640; margin-top:2px; }
   .stat .n { font-size:12px; color:var(--muted); }
   .pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px;
-    font-size:12px; font-weight:600; border:1px solid currentColor; }
+    font-size:12px; font-weight:600; border:1px solid currentColor; white-space:nowrap; }
   .good { color:var(--good); background:var(--good-bg); }
   .warn { color:var(--warn); background:var(--warn-bg); }
   .bad  { color:var(--bad);  background:var(--bad-bg); }
   .muted { color:var(--muted); }
-  .refused { border-left:3px solid var(--bad); background:var(--bad-bg); color:var(--bad);
-    padding:12px 14px; border-radius:0 6px 6px 0; }
-  .bar { height:7px; background:var(--line); border-radius:4px; overflow:hidden; min-width:70px; }
-  .bar > i { display:block; height:100%; background:var(--accent); }
+  .refused { border-inline-start:3px solid var(--bad); background:var(--bad-bg); color:var(--bad);
+    padding:11px 14px; border-radius:0 6px 6px 0; }
+  .bar { height:7px; background:var(--line); border-radius:4px; overflow:hidden; min-width:64px; }
+  .bar > i { display:block; height:100%; background:var(--accent-ink); }
   a.card { text-decoration:none; color:inherit; display:block; }
-  a.card:hover .panel { border-color:var(--accent); }
+  a.card:hover .panel { border-color:var(--accent-ink); }
   code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--muted); }
-  details summary { cursor:pointer; color:var(--accent); font-size:13px; }
+  details summary { cursor:pointer; color:var(--accent-ink); font-size:13px; }
+  form.filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:12px; align-items:end; }
+  label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin-bottom:4px; }
+  select,input[type=number] { width:100%; padding:7px 9px; border:1px solid var(--line);
+    border-radius:6px; background:var(--panel); color:var(--ink); font:inherit; font-size:13px; }
+  button { padding:8px 16px; border-radius:6px; border:1px solid var(--accent-ink);
+    background:var(--accent-ink); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent-ink); }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .chip { font-size:12px; padding:2px 9px; border-radius:999px; background:var(--bg);
+    border:1px solid var(--line); color:var(--muted); }
+  .tl { list-style:none; margin:0; padding:0; }
+  .tl li { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .tl .when { color:var(--muted); font-size:12px; min-width:132px; }
+  .tl .what { flex:1; }
+  .tl .kind { font-size:11px; letter-spacing:.05em; color:var(--muted); text-transform:uppercase; }
 </style>
+{% block head %}{% endblock %}
 </head>
 <body>
 <header>
-  <div><a href="/"><span class="brand">Saudi Real Estate Opportunity Intelligence</span></a>
-    <div class="sub">Slice 1 — analyst entry → comparables → valuation → true cost → score</div></div>
-  <div class="sub"><a href="/docs">API docs</a></div>
+  <div>
+    <a href="/?lang={{ locale }}"><span class="brand">{{ t('brand') }}</span></a>
+    <div class="sub">{{ t('tagline') }}</div>
+  </div>
+  <nav>
+    <a href="/?lang={{ locale }}" class="{{ 'on' if page=='list' }}">{{ t('nav.opportunities') }}</a>
+    <a href="/map?lang={{ locale }}" class="{{ 'on' if page=='map' }}">{{ t('nav.map') }}</a>
+    <a href="/admin/sources?lang={{ locale }}" class="{{ 'on' if page=='admin' }}">{{ t('nav.admin') }}</a>
+    <a href="/docs">{{ t('nav.api') }}</a>
+    <a href="?lang={{ other_locale }}" class="pill" style="border-color:rgba(255,255,255,.5)">
+      {{ 'العربية' if other_locale=='ar' else 'English' }}</a>
+  </nav>
 </header>
 <main>{% block content %}{% endblock %}</main>
 </body>

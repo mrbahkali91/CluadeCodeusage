@@ -1,25 +1,23 @@
 {% extends "base.html" %}
+{% set page = 'list' %}
 {% block title %}{{ o.title }}{% endblock %}
 {% block content %}
 
 {% if o.source_is_synthetic or (o.valuation and o.valuation.is_synthetic_evidence) %}
 <div class="banner">
-  <strong>Demonstration data.</strong> The comparable transactions behind this valuation come
-  from a <em>synthetic</em> fixture corpus, not real registered sales. Every figure below is
-  computed by the real engine, but the evidence is generated. Replaced by the Ministry of
-  Justice open-data loader once Assumption A-01 is validated.
+  <strong>{{ t('banner.synthetic') }}</strong>
 </div>
 {% endif %}
 
 <h1>{{ o.title }}</h1>
 <p class="muted">
-  {{ o.opportunity_type|replace('_',' ')|title }} · {{ o.district or 'unknown district' }} ·
-  {{ o.property_class|title }} · {{ '%.0f'|format(o.area_sqm) }} m² ·
+  {{ t('otype.' ~ o.opportunity_type) }} · {{ o.district or '—' }} ·
+  {{ t('pclass.' ~ o.property_class) }} · {{ num(o.area_sqm) }} m² ·
   location precision <code>{{ o.location_precision }}</code> · source <code>{{ o.source_key }}</code>
 </p>
 
 <div class="panel">
-  <h2>Assessment</h2>
+  <h2>{{ t('detail.assessment') }}</h2>
   {% if o.score_detail %}
   <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
     {% set cls = o.score_detail.classification %}
@@ -32,14 +30,14 @@
     {% if o.score_detail.capped %}<span class="pill warn">capped by confidence gate</span>{% endif %}
   </div>
   {% if cls == 'INSUFFICIENT_DATA' %}
-  <div class="refused"><strong>No recommendation is shown.</strong> Data confidence
+  <div class="refused"><strong>{{ t('detail.no_recommendation') }}</strong> Data confidence
     ({{ '%.1f'|format(o.score_detail.data_confidence*100) }}%) is below the 60% floor, so this
     opportunity is stored and monitored rather than rated. The underlying score of
     {{ '%.1f'|format(o.score_detail.total) }} is shown below for transparency but should not be
     acted on.</div>
   {% endif %}
   {% if o.score_detail.confidence_gaps %}
-  <details style="margin-top:12px"><summary>What is holding confidence down</summary>
+  <details style="margin-top:12px"><summary>{{ t('detail.confidence_gaps') }}</summary>
     <div class="scroll" style="margin-top:10px"><table>
       <thead><tr><th>Input</th><th class="num">Value</th><th class="num">Weight</th>
         <th class="num">Shortfall</th><th>Why</th></tr></thead>
@@ -57,15 +55,15 @@
   {% endif %}
 
   <div class="grid" style="margin-top:6px">
-    <div class="stat"><div class="k">True acquisition cost</div>
+    <div class="stat"><div class="k">{{ t('field.cost') }}</div>
       <div class="v">{% if o.cost.is_complete %}SAR {{ '{:,.0f}'.format(o.cost.total) }}{% else %}<span class="muted">incomplete</span>{% endif %}</div>
       <div class="n">{{ '%.0f'|format(o.cost.completeness*100) }}% of material items known</div></div>
-    <div class="stat"><div class="k">Estimated market value</div>
+    <div class="stat"><div class="k">{{ t('field.value') }}</div>
       <div class="v">{% if o.valuation %}SAR {{ '{:,.0f}'.format(o.valuation.fair_value_base) }}{% else %}—{% endif %}</div>
       {% if o.valuation %}<div class="n">band {{ '{:,.0f}'.format(o.valuation.fair_value_low) }} – {{ '{:,.0f}'.format(o.valuation.fair_value_high) }}</div>{% endif %}</div>
-    <div class="stat"><div class="k">Discount</div>
+    <div class="stat"><div class="k">{{ t('field.discount') }}</div>
       <div class="v">{% if o.discount_percent is not none %}{{ '%.1f'|format(o.discount_percent) }}%{% else %}<span class="muted" style="font-size:15px">Refused</span>{% endif %}</div></div>
-    <div class="stat"><div class="k">Price / m²</div>
+    <div class="stat"><div class="k">{{ t('field.ppsqm') }}</div>
       <div class="v">{% if o.price_per_sqm %}SAR {{ '{:,.0f}'.format(o.price_per_sqm) }}{% else %}—{% endif %}</div></div>
   </div>
 
@@ -79,14 +77,14 @@
 </div>
 
 <div class="panel">
-  <h2>True acquisition cost</h2>
+  <h2>{{ t('detail.cost') }}</h2>
   <div class="scroll"><table>
     <thead><tr><th>Line item</th><th class="num">Amount</th><th>Basis</th><th>Material</th></tr></thead>
     <tbody>
     {% for i in o.cost.line_items %}
       <tr>
         <td>{{ i.kind|replace('_',' ')|title }}</td>
-        <td class="num">{% if i.amount.value is not none %}SAR {{ '{:,.0f}'.format(i.amount.value) }}{% else %}<span class="pill bad">UNKNOWN</span>{% endif %}</td>
+        <td class="num">{% if i.amount.value is not none %}SAR {{ '{:,.0f}'.format(i.amount.value) }}{% else %}<span class="pill bad">{{ t('detail.unknown') }}</span>{% endif %}</td>
         <td><code>{{ i.amount.basis }}</code></td>
         <td>{{ 'yes' if i.material else 'no' }}</td>
       </tr>
@@ -100,7 +98,7 @@
 
 {% if o.score_detail %}
 <div class="panel">
-  <h2>Score derivation — reproducible</h2>
+  <h2>{{ t('detail.score') }}</h2>
   <p class="muted" style="margin-top:-6px">Weights <code>{{ o.score_detail.weight_profile_version }}</code>,
      method <code>{{ o.score_detail.method_version }}</code>. Same inputs and same versions always
      produce the identical score.</p>
@@ -127,13 +125,13 @@
 
 {% if o.valuation %}
 <div class="panel">
-  <h2>Valuation evidence</h2>
+  <h2>{{ t('detail.evidence') }}</h2>
   <div class="grid" style="margin-bottom:14px">
-    <div class="stat"><div class="k">Comparables used</div><div class="v">{{ o.valuation.comparable_count }}</div>
+    <div class="stat"><div class="k">{{ t('detail.comparables_used') }}</div><div class="v">{{ o.valuation.comparable_count }}</div>
       <div class="n">effective n {{ '%.2f'|format(o.valuation.effective_n) }}</div></div>
-    <div class="stat"><div class="k">Comparable quality</div><div class="v">{{ '%.2f'|format(o.valuation.comparable_quality) }}</div></div>
-    <div class="stat"><div class="k">Valuation confidence</div><div class="v">{{ '%.0f'|format(o.valuation.confidence*100) }}%</div></div>
-    <div class="stat"><div class="k">Index tier</div><div class="v" style="font-size:16px">{{ o.valuation.index_tier }}</div>
+    <div class="stat"><div class="k">{{ t('detail.comparable_quality') }}</div><div class="v">{{ '%.2f'|format(o.valuation.comparable_quality) }}</div></div>
+    <div class="stat"><div class="k">{{ t('detail.valuation_confidence') }}</div><div class="v">{{ '%.0f'|format(o.valuation.confidence*100) }}%</div></div>
+    <div class="stat"><div class="k">{{ t('detail.index_tier') }}</div><div class="v" style="font-size:16px">{{ o.valuation.index_tier }}</div>
       <div class="n">time-adjusted to today</div></div>
   </div>
   <div class="scroll"><table>
@@ -159,13 +157,33 @@
   </table></div>
 </div>
 {% else %}
-<div class="panel"><h2>Valuation evidence</h2>
+<div class="panel"><h2>{{ t('detail.evidence') }}</h2>
   <div class="refused">No valuation produced — insufficient comparable evidence. The platform
   refuses to extrapolate a market value from too few transactions.</div></div>
 {% endif %}
 
 <div class="panel">
-  <h2>Provenance</h2>
+  <h2>{{ t('detail.timeline') }}</h2>
+  <p class="muted" style="margin-top:-6px">Snapshots are append-only — a price change is a new
+  row, never an overwrite. The sequence is itself the opportunity signal.</p>
+  <ul class="tl">
+    {% for e in timeline %}
+    <li>
+      <span class="when">{{ e.occurred_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      <span class="what">
+        <span class="kind">{{ e.event_type.replace('_',' ')|lower }}</span><br>
+        {{ e.summary }}
+        {% if e.payload.get('signals') %}
+          {% for s in e.payload['signals'] %}<span class="chip">{{ s }}</span>{% endfor %}
+        {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="panel">
+  <h2>{{ t('detail.provenance') }}</h2>
   <p class="muted" style="margin-top:-6px">Every stored field, where it came from, and how much we trust it.</p>
   <details><summary>Show {{ provenance|length }} recorded fields</summary>
     <div class="scroll" style="margin-top:12px"><table>

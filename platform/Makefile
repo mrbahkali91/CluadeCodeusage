@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 export SREOI_DATABASE_URL ?= postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi
 
-.PHONY: help install migrate migrate-down seed demo run test lint format typecheck contracts check clean
+.PHONY: help install db-up migrate migrate-down seed demo run test lint format typecheck contracts check clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -12,6 +12,10 @@ help:
 install:  ## Create the venv and install the project with dev extras
 	uv venv .venv --python 3.11
 	uv pip install --python .venv/bin/python -e ".[dev]"
+
+db-up:  ## Start the local PostgreSQL cluster (native install)
+	pg_ctlcluster 16 main start || true
+	@pg_isready -h 127.0.0.1 -p 5432
 
 migrate:  ## Apply migrations
 	.venv/bin/alembic upgrade head

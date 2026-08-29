@@ -27,7 +27,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -119,6 +119,14 @@ class Property(Base):
     build_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     developer_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    unit_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Normalised text used for trigram similarity during entity resolution.
+    match_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Explicitly named: an unnamed self-referential FK cannot be dropped, which
+    # silently breaks migration reversibility.
+    merged_into_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("properties.id", name="fk_properties_merged_into_id"), nullable=True
+    )
     source_record_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("source_records.id"), nullable=True
     )
@@ -330,4 +338,95 @@ class VerificationCheck(Base):
     check_type: Mapped[str] = mapped_column(String(48))
     status: Mapped[str] = mapped_column(String(16))  # VERIFIED | UNVERIFIED | CONFLICTED | FAILED
     evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Listing(Base):
+    """An advertisement of a property on one source."""
+
+    __tablename__ = "listings"
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_id", name="uq_listing_source_external"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"))
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id"))
+    external_id: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    snapshots: Mapped[list[ListingSnapshot]] = relationship(back_populates="listing")
+
+
+class ListingSnapshot(Base):
+    """Append-only. A price change is a new row, never an update.
+
+    The sequence is the product signal: 950k -> 920k -> 875k -> "urgent" is the
+    opportunity. A mutable price column would destroy exactly that.
+    """
+
+    __tablename__ = "listing_snapshots"
+    __table_args__ = (Index("ix_listing_snapshots_listing_time", "listing_id", "observed_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    listing_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("listings.id"))
+    asking_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="ACTIVE")
+    signal_tags: Mapped[list[str]] = mapped_column(ARRAY(String(32)), default=list)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    listing: Mapped[Listing] = relationship(back_populates="snapshots")
+
+
+class PropertyTimelineEvent(Base):
+    """Everything that ever happened to a property, in order."""
+
+    __tablename__ = "property_timeline"
+    __table_args__ = (Index("ix_timeline_property_time", "property_id", "occurred_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"))
+    event_type: Mapped[str] = mapped_column(String(40))
+    summary: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    source_record_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("source_records.id"), nullable=True
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PropertyMerge(Base):
+    """A resolution decision. Reversible: `reversed_at` undoes it."""
+
+    __tablename__ = "property_merges"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    winner_property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"))
+    candidate_property_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("properties.id"), nullable=True
+    )
+    decision: Mapped[str] = mapped_column(String(16))
+    score: Mapped[float] = mapped_column(Numeric(7, 6))
+    components: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    method_version: Mapped[str] = mapped_column(String(32))
+    decided_by: Mapped[str] = mapped_column(String(32), default="SYSTEM")
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SourceHealthCheck(Base):
+    """A silently dead connector is the failure mode that matters most."""
+
+    __tablename__ = "source_health_checks"
+    __table_args__ = (Index("ix_health_source_time", "source_id", "checked_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id"))
+    healthy: Mapped[bool] = mapped_column()
+    latency_ms: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

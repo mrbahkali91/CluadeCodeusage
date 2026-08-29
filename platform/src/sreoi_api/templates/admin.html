@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% set page = 'admin' %}
+{% block title %}{{ t('admin.title') }}{% endblock %}
+{% block content %}
+<h1>{{ t('admin.title') }}</h1>
+<p class="muted">{{ t('admin.subtitle') }}</p>
+<div class="panel">
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>{{ t('admin.state') }}</th><th>{{ t('admin.source') }}</th>
+      <th>{{ t('admin.legal') }}</th><th>{{ t('admin.licence') }}</th>
+      <th class="num">{{ t('admin.records') }}</th><th class="num">{{ t('admin.latency') }}</th>
+      <th>{{ t('admin.last_record') }}</th><th>{{ t('admin.checked') }}</th>
+    </tr></thead>
+    <tbody>
+    {% for s in statuses %}
+      <tr>
+        <td>
+          {% if s.state == 'HEALTHY' %}<span class="pill good">● {{ s.state }}</span>
+          {% elif s.state in ['STALE','UNKNOWN'] %}<span class="pill warn">◐ {{ s.state }}</span>
+          {% else %}<span class="pill bad">✕ {{ s.state }}</span>{% endif %}
+        </td>
+        <td><strong>{{ s.name }}</strong><br><code>{{ s.key }}</code>
+            {% if s.is_synthetic %}<br><span class="pill warn">synthetic</span>{% endif %}</td>
+        <td><code>{{ s.legal_access_method }}</code><br>
+            <span class="muted" style="font-size:12px">{{ s.availability_label }}</span></td>
+        <td class="muted" style="font-size:12px;max-width:280px">{{ s.data_license }}</td>
+        <td class="num">{{ num(s.record_count) }}</td>
+        <td class="num">{% if s.latency_ms %}{{ num(s.latency_ms) }} ms{% else %}—{% endif %}</td>
+        <td class="muted" style="font-size:12px">{{ s.last_record_at.strftime('%Y-%m-%d %H:%M') if s.last_record_at else '—' }}</td>
+        <td class="muted" style="font-size:12px">{{ s.checked_at.strftime('%Y-%m-%d %H:%M') if s.checked_at else '—' }}</td>
+      </tr>
+      {% if s.detail %}<tr><td></td><td colspan="7" class="muted" style="font-size:12px">↳ {{ s.detail }}</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -13,6 +13,8 @@ the Ministry of Justice open-data loader once Assumption A-01 is validated
 
 from __future__ import annotations
 
+import hashlib
+import json
 import random
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -21,7 +23,13 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sreoi_persistence.models import District, PriceIndexPoint, Source, Transaction
+from sreoi_persistence.models import (
+    District,
+    PriceIndexPoint,
+    Source,
+    SourceRecord,
+    Transaction,
+)
 from sreoi_sources.base import AvailabilityLabel, LegalAccessMethod
 from sreoi_sources.kapsarc import KapsarcIndexSource
 
@@ -121,10 +129,33 @@ def seed_price_index(session: Session, source: Source, *, live: bool = True) -> 
         return 0
     connector = KapsarcIndexSource()
     ref = next(connector.discover(datetime.now(UTC)))
-    record = connector.normalize(connector.fetch(ref, limit=1000))
+    raw = connector.fetch(ref, limit=1000)
+    record = connector.normalize(raw)
     result = connector.validate(record)
     if not result.ok:
         raise RuntimeError(f"KAPSARC index failed validation: {result.errors}")
+
+    # Raw-first: persist the original payload before interpreting it, exactly as
+    # the manual and connector paths do.
+    digest = hashlib.sha256(
+        json.dumps(raw.payload, sort_keys=True, default=str).encode()
+    ).hexdigest()
+    if not session.scalar(
+        select(SourceRecord).where(
+            SourceRecord.source_id == source.id, SourceRecord.content_hash == digest
+        )
+    ):
+        session.add(
+            SourceRecord(
+                source_id=source.id,
+                external_id=ref.external_id,
+                content_hash=digest,
+                raw_payload={"total_count": raw.payload.get("total_count")},
+                url=raw.url,
+                retrieved_at=raw.retrieved_at,
+            )
+        )
+        session.flush()
 
     inserted = 0
     for point in record.data["points"]:
@@ -170,6 +201,25 @@ def seed_transactions(
     rng = random.Random(seed)
     today = date.today()
     count = 0
+
+    # The generated corpus is itself a source record, so its provenance and
+    # freshness are visible on the admin dashboard like any other source.
+    manifest = {
+        "generator": "seed_transactions",
+        "seed": seed,
+        "per_district": per_district,
+        "districts": sorted(districts),
+        "synthetic": True,
+    }
+    session.add(
+        SourceRecord(
+            source_id=source.id,
+            external_id=f"synthetic-corpus-{seed}",
+            content_hash=hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+            raw_payload=manifest,
+        )
+    )
+    session.flush()
 
     for name_en, _, lon, lat, _, _ in RIYADH_DISTRICTS:
         district = districts[name_en]

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% set page = 'map' %}
+{% block title %}{{ t('map.title') }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<script src="/static/vendor/maplibre-gl.js"></script>
+<style>
+  #map { height:640px; border-radius:8px; border:1px solid var(--line); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-top:12px; font-size:12px; }
+  .swatch { width:26px; height:12px; border-radius:3px; display:inline-block; vertical-align:middle; }
+  .maplibregl-popup-content { font:13px system-ui,sans-serif; color:#12181f; }
+  .district-label { font:600 12px system-ui,sans-serif; color:#1e3a5f; white-space:nowrap;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff; pointer-events:none; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>{{ t('map.title') }}</h1>
+<p class="muted">{{ t('map.subtitle') }}</p>
+<div class="panel"><div id="map"></div>
+  <div class="legend">
+    <span class="muted">{{ t('map.districts') }}:</span>
+    <span><i class="swatch" style="background:#c9e5d2"></i> low</span>
+    <span><i class="swatch" style="background:#7cbf98"></i></span>
+    <span><i class="swatch" style="background:#3d8f66"></i></span>
+    <span><i class="swatch" style="background:#1d5f43"></i> high</span>
+    <span class="muted">|</span>
+    <span><i class="swatch" style="background:#136f3f;border-radius:50%;width:12px"></i> score ≥ 80</span>
+    <span><i class="swatch" style="background:#c98a12;border-radius:50%;width:12px"></i> 60–79</span>
+    <span><i class="swatch" style="background:#a02128;border-radius:50%;width:12px"></i> &lt; 60 / insufficient</span>
+  </div>
+</div>
+<div class="panel"><h2>{{ t('list.title') }}</h2><div id="visible" class="muted">…</div></div>
+
+<script>
+// Locale is read from the document rather than templated into JavaScript:
+// interpolating server values into a script block is both an escaping hazard
+// and how the district label field ended up as "&#39;name_en&#39;".
+const LOCALE = document.documentElement.lang === 'ar' ? 'ar' : 'en';
+const NAME_FIELD = LOCALE === 'ar' ? 'name_ar' : 'name_en';
+
+const map = new maplibregl.Map({
+  container: 'map',
+  // No external basemap: the base layer is our own district geometry from
+  // PostGIS. A third-party tile server would otherwise see every viewport a
+  // user pans to, and the map would break on restricted networks.
+  style: {
+    version: 8,
+    sources: {},
+    layers: [{ id:'bg', type:'background', paint:{ 'background-color':'#eef2f6' } }]
+  },
+  center: [46.81, 24.845], zoom: 11.4
+});
+map.addControl(new maplibregl.NavigationControl(),
+  document.documentElement.dir === 'rtl' ? 'top-left' : 'top-right');
+
+async function load() {
+  const [districts, points] = await Promise.all([
+    fetch('/api/v1/map/districts').then(r => r.json()),
+    fetch('/api/v1/map/opportunities?limit=500').then(r => r.json()),
+  ]);
+
+  map.addSource('districts', { type:'geojson', data: districts });
+  map.addLayer({
+    id:'district-fill', type:'fill', source:'districts',
+    paint:{ 'fill-color': ['interpolate',['linear'],['coalesce',['get','median_price_per_sqm'],0],
+              0,'#eef4f0', 5200,'#c9e5d2', 6000,'#7cbf98', 6600,'#3d8f66', 7200,'#1d5f43'],
+            'fill-opacity':0.45 }
+  });
+  map.addLayer({ id:'district-line', type:'line', source:'districts',
+    paint:{ 'line-color':'#1e3a5f', 'line-width':1, 'line-opacity':0.5 } });
+  // Labels are DOM markers, not symbol layers: a symbol layer needs a glyph
+  // font source, and the only way to get one here would be an external CDN.
+  for (const f of districts.features) {
+    const c = f.properties.centroid;
+    if (!c) continue;
+    const el = document.createElement('div');
+    el.className = 'district-label';
+    el.textContent = f.properties[NAME_FIELD];
+    new maplibregl.Marker({ element: el }).setLngLat(c).addTo(map);
+  }
+
+  // Unclustered: at current volume every opportunity is worth seeing. Clustering
+  // returns (with DOM markers for the counts) when point density warrants it.
+  map.addSource('opps', { type:'geojson', data: points });
+  map.addLayer({ id:'points', type:'circle', source:'opps',
+    paint:{ 'circle-radius':7, 'circle-stroke-width':1.5, 'circle-stroke-color':'#fff',
+            'circle-color':['case',
+              ['==',['get','classification'],'INSUFFICIENT_DATA'],'#a02128',
+              ['>=',['coalesce',['get','score'],0],80],'#136f3f',
+              ['>=',['coalesce',['get','score'],0],60],'#c98a12','#a02128'] } });
+
+  map.on('click','points', e => {
+    const p = e.features[0].properties;
+    const cost = p.true_acquisition_cost ? 'SAR ' + Number(p.true_acquisition_cost).toLocaleString() : '—';
+    const disc = p.discount_percent != null ? Number(p.discount_percent).toFixed(1) + '%' : 'refused';
+    new maplibregl.Popup({ offset: 12 })
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<strong>${p.title}</strong><br>score ${p.score ?? '—'} · ${p.classification}<br>
+                cost ${cost} · discount ${disc}<br>
+                <a href="/opportunities/${p.id}?lang=${LOCALE}">open</a>`)
+      .addTo(map);
+  });
+  map.on('mouseenter','points', () => map.getCanvas().style.cursor='pointer');
+  map.on('mouseleave','points', () => map.getCanvas().style.cursor='');
+  map.on('moveend', refresh);
+  refresh();
+}
+
+async function refresh() {
+  const b = map.getBounds();
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
+  const data = await fetch(`/api/v1/search/opportunities?bbox=${bbox}&limit=500`).then(r => r.json());
+  const actionable = data.results.filter(r => r.classification !== 'INSUFFICIENT_DATA').length;
+  document.getElementById('visible').textContent =
+    `${data.count} in view · ${actionable} with sufficient data to rate`;
+  document.getElementById('visible').dataset.ready = '1';
+}
+
+map.on('load', load);
+</script>
+{% endblock %}
