@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% set page = 'quality' %}
+{% block title %}{{ t('quality.title') }}{% endblock %}
+
+{#
+  Status is never signalled by colour alone (WCAG 2.1 AA 1.4.1): every pill
+  carries a shape glyph and a word as well as a hue, so the page is readable in
+  greyscale and to a screen reader.
+#}
+{% macro pill(code) %}
+  {%- set map = {
+    'PASS':   ('good', '✓'), 'OK':   ('good', '✓'),
+    'CALIBRATED': ('good', '✓'),
+    'WARN':   ('warn', '◐'), 'UNDERCONFIDENT': ('warn', '◐'),
+    'FAIL':   ('bad',  '✕'), 'OVERCONFIDENT':  ('bad',  '✕'),
+    'NOT_ASSESSED': ('muted', '—'), 'EMPTY': ('muted', '—')
+  } -%}
+  {%- set cls, glyph = map.get(code, ('muted', '—')) -%}
+  <span class="pill {{ cls }}" aria-label="{{ t('status.' ~ code) }}">
+    <span aria-hidden="true">{{ glyph }}</span> {{ t('status.' ~ code) }}</span>
+{% endmacro %}
+
+{% macro pct(value, decimals=1) %}
+  {%- if value is none -%}—{%- else -%}{{ num(value * 100, decimals) }}%{%- endif -%}
+{% endmacro %}
+
+{% macro signed_pct(value, decimals=1) %}
+  {%- if value is none -%}—{%- else -%}{{ '+' if value > 0 else '' }}{{ num(value * 100, decimals) }}%{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<h1>{{ t('quality.title') }}</h1>
+<p class="muted">{{ t('quality.subtitle') }}</p>
+
+{# The caveat is the first thing on the page and styled as an alert, not a
+   footnote. Publishing an error figure from a generated corpus as if it were
+   market accuracy is the single most misleading thing this product could do. #}
+{% if (run and run.evidence_is_synthetic) or quality.evidence_is_synthetic %}
+<div class="banner" role="alert" style="border-width:2px;font-weight:600">
+  <span aria-hidden="true">⚠</span> {{ t('quality.banner') }}
+</div>
+{% endif %}
+
+{% if not run %}
+<div class="panel">
+  <h2>{{ t('quality.backtest') }}</h2>
+  <p>{{ t('quality.no_run') }}</p>
+  <p><code>{{ t('quality.run_hint') }}</code></p>
+</div>
+{% else %}
+{% set bt = backtest.backtest %}
+{% set overall = bt.overall %}
+<div class="panel">
+  <h2>{{ t('quality.backtest') }}</h2>
+  <div class="grid">
+    <div class="stat">
+      <div class="k">{{ t('quality.median_error') }}</div>
+      <div class="v">{{ pct(overall.median_abs_pct_error, 2) }}</div>
+      <div class="n">{{ pill(overall.point_error_verdict) }} {{ t('quality.target') }} ≤ {{ pct(overall.targets.median_abs_pct_error, 0) }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('quality.coverage') }}</div>
+      <div class="v">{{ pct(overall.interval_coverage) }}</div>
+      <div class="n">{{ pill(overall.coverage_verdict) }} {{ t('quality.target') }} ≥ {{ pct(overall.targets.interval_coverage, 0) }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('quality.width') }}</div>
+      <div class="v">{{ pct(overall.median_interval_width_pct) }}</div>
+      <div class="n">{{ pill(overall.width_verdict) }} {{ t('quality.target') }} ≤ {{ pct(overall.targets.max_interval_width_pct, 0) }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('quality.bias') }}</div>
+      <div class="v">{{ signed_pct(overall.median_signed_pct_error, 2) }}</div>
+      <div class="n">{{ t('quality.mean_error') }} {{ pct(overall.mean_abs_pct_error, 2) }} · {{ t('quality.p90_error') }} {{ pct(overall.p90_abs_pct_error, 2) }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('quality.refused') }}</div>
+      <div class="v">{{ num(overall.refused) }} / {{ num(overall.cases) }}</div>
+      <div class="n">{{ pct(overall.refusal_rate) }}</div>
+    </div>
+  </div>
+
+  {% if overall.interval_is_uninformative %}
+  <div class="refused" style="margin-top:14px">
+    <strong><span aria-hidden="true">⚠</span> {{ t('status.FAIL') }}:</strong>
+    The published band clears its coverage target only because it is
+    {{ pct(overall.median_interval_width_pct) }} of value wide — too wide to
+    separate a 20% discount from fair value, which is the decision the product
+    exists to support.
+  </div>
+  {% endif %}
+
+  <p class="muted" style="margin:12px 0 0;font-size:12px">{{ t('quality.refusal_note') }}</p>
+  <div class="chips">
+    <span class="chip">{{ t('quality.sampling') }}: {{ num(backtest.sampling.held_out) }} / {{ num(backtest.sampling.eligible_count) }} {{ t('list.of') }} {{ num(backtest.sampling.corpus_count) }}</span>
+    <span class="chip">seed {{ digits(backtest.sampling.seed) }}</span>
+    <span class="chip">min history {{ digits(backtest.sampling.min_history_days) }}d</span>
+    <span class="chip"><code>{{ backtest.valuation_method_version }}</code></span>
+    <span class="chip"><code>{{ bt.method_version }}</code></span>
+  </div>
+  {% if bt.refusal_reasons %}
+  <div class="chips">
+    {% for reason in bt.refusal_reasons %}
+      <span class="chip">{{ reason.reason }}: {{ digits(reason.count) }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% set cal = backtest.calibration_interval %}
+<div class="panel">
+  <h2>{{ t('quality.calibration') }}</h2>
+  <p><strong>{{ t('quality.finding') }}:</strong> {{ cal.finding }}</p>
+  <div class="grid">
+    <div class="stat"><div class="k">{{ t('quality.status') }}</div><div class="v" style="font-size:14px">{{ pill(cal.verdict) }}</div></div>
+    <div class="stat"><div class="k">{{ t('quality.brier') }}</div><div class="v">{{ num(cal.brier, 3) }}</div></div>
+    <div class="stat"><div class="k">{{ t('quality.skill') }}</div><div class="v">{{ num(cal.brier_skill, 3) if cal.brier_skill is not none else '—' }}</div></div>
+    <div class="stat"><div class="k">{{ t('quality.ece') }}</div><div class="v">{{ pct(cal.expected_calibration_error) }}</div></div>
+    <div class="stat"><div class="k">{{ t('quality.auc') }}</div><div class="v">{{ num(cal.discrimination_auc, 3) if cal.discrimination_auc is not none else '—' }}</div></div>
+    <div class="stat"><div class="k">{{ t('quality.corr') }}</div><div class="v">{{ num(cal.error_rank_correlation, 3) if cal.error_rank_correlation is not none else '—' }}</div></div>
+  </div>
+  <div class="scroll" style="margin-top:12px"><table>
+    <thead><tr>
+      <th>{{ t('quality.bucket') }}</th><th class="num">{{ t('quality.count') }}</th>
+      <th class="num">{{ t('quality.claimed') }}</th><th class="num">{{ t('quality.realised') }}</th>
+      <th class="num">{{ t('quality.gap') }}</th><th class="num">{{ t('quality.median_error') }}</th>
+      <th>{{ t('quality.status') }}</th>
+    </tr></thead>
+    <tbody>
+    {% for b in cal.buckets %}
+      <tr>
+        <td>{{ digits(b.label) }}</td>
+        <td class="num">{{ num(b.count) }}</td>
+        <td class="num">{{ pct(b.mean_claimed) }}</td>
+        <td class="num">{{ pct(b.realised_rate) }}</td>
+        <td class="num">{{ signed_pct(b.gap) }}</td>
+        <td class="num">{{ pct(b.mean_abs_pct_error, 2) }}</td>
+        <td>{{ pill(b.verdict) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="panel">
+  <h2>{{ t('quality.segments') }}</h2>
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>{{ t('quality.segment') }}</th><th class="num">{{ t('quality.cases') }}</th>
+      <th class="num">{{ t('quality.refused') }}</th><th class="num">{{ t('quality.median_error') }}</th>
+      <th class="num">{{ t('quality.coverage') }}</th><th class="num">{{ t('quality.width') }}</th>
+      <th class="num">{{ t('quality.confidence') }}</th><th>{{ t('quality.status') }}</th>
+    </tr></thead>
+    <tbody>
+    {% for group in [bt.by_district, bt.by_area_band, bt.by_comparable_band] %}
+      {% for s in group %}
+      <tr>
+        <td>{{ s.label }}</td>
+        <td class="num">{{ num(s.cases) }}</td>
+        <td class="num">{{ num(s.refused) }}</td>
+        <td class="num">{{ pct(s.median_abs_pct_error, 2) }}</td>
+        <td class="num">{{ pct(s.interval_coverage) }}</td>
+        <td class="num">{{ pct(s.median_interval_width_pct) }}</td>
+        <td class="num">{{ pct(s.mean_confidence) }}</td>
+        <td>{{ pill(s.coverage_verdict) }} {{ pill(s.width_verdict) }}</td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>{{ t('quality.monitoring') }}</h2>
+  <p>{{ pill(quality.overall_status.value) }}
+    <span class="muted">{{ t('quality.captured') }} {{ quality.captured_at.strftime('%Y-%m-%d %H:%M') }}</span></p>
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>{{ t('quality.flag') }}</th><th class="num">{{ t('quality.value') }}</th>
+      <th class="num">{{ t('quality.target') }}</th><th>{{ t('quality.status') }}</th>
+      <th>{{ t('quality.note') }}</th>
+    </tr></thead>
+    <tbody>
+    {% for f in quality.flags %}
+      <tr>
+        <td>{{ f.label }}<br><code>{{ f.key }}</code></td>
+        <td class="num">{{ num(f.value, 4) if f.value is not none else '—' }}</td>
+        <td class="num muted" style="font-size:12px">{{ num(f.threshold_warn, 3) }} / {{ num(f.threshold_fail, 3) }}</td>
+        <td>{{ pill(f.severity.value) }}</td>
+        <td class="muted" style="font-size:12px;max-width:340px">{{ f.note }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <div class="grid" style="margin-top:16px">
+    <div class="stat">
+      <div class="k">{{ t('field.confidence') }}</div>
+      <div class="v">{{ pct(quality.confidence_distribution.data_confidence.mean) }}</div>
+      <div class="n">{{ pct(quality.confidence_distribution.data_confidence.below_gate) }} below the 60% gate</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('quality.refused') }} ({{ t('field.discount') }})</div>
+      <div class="v">{{ num(quality.refusals.refused_discounts) }}</div>
+      <div class="n">INSUFFICIENT_DATA {{ num(quality.refusals.insufficient_data) }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">Verification pass rate</div>
+      <div class="v">{{ pct(quality.verification.pass_rate) }}</div>
+      <div class="n">{{ num(quality.verification.verified) }} / {{ num(quality.verification.applicable) }} applicable</div>
+    </div>
+    <div class="stat">
+      <div class="k">Agent vs. deterministic</div>
+      <div class="v">{{ num(quality.agent_disagreement.stored_disagreements) }}</div>
+      <div class="n">of {{ num(quality.agent_disagreement.compared_summaries) }} compared; {{ num(quality.agent_disagreement.blocked_disagreements) }} blocked before storage</div>
+    </div>
+  </div>
+
+  <details style="margin-top:14px">
+    <summary>Field completeness, source freshness and provenance basis</summary>
+    <div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>Field</th><th class="num">Complete</th></tr></thead>
+      <tbody>
+      {% for field, value in quality.field_completeness.items() %}
+        <tr><td><code>{{ field }}</code></td><td class="num">{{ pct(value) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>{{ t('admin.source') }}</th><th class="num">{{ t('admin.records') }}</th>
+        <th class="num">Age (days)</th><th>{{ t('admin.state') }}</th></tr></thead>
+      <tbody>
+      {% for s in quality.source_freshness %}
+        <tr>
+          <td><code>{{ s.key }}</code>
+            {% if s.is_synthetic %}<span class="pill warn" aria-label="synthetic evidence"><span aria-hidden="true">⚠</span> synthetic</span>{% endif %}</td>
+          <td class="num">{{ num(s.record_count) }}</td>
+          <td class="num">{{ num(s.age_days, 2) if s.age_days is not none else '—' }}</td>
+          <td>{{ pill('OK') if not s.never_delivered else pill('WARN') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="chips" style="margin-top:10px">
+      {% for basis, count in quality.provenance.by_basis.items() %}
+        <span class="chip">{{ basis }}: {{ digits(count) }}</span>
+      {% endfor %}
+    </div>
+  </details>
+</div>
+
+{% if history %}
+<div class="panel">
+  <h2>{{ t('quality.history') }}</h2>
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>{{ t('quality.captured') }}</th><th>{{ t('quality.status') }}</th>
+      <th class="num">Completeness</th><th class="num">Confidence</th>
+      <th class="num">INSUFFICIENT_DATA</th><th class="num">Verification</th>
+    </tr></thead>
+    <tbody>
+    {% for h in history %}
+      <tr>
+        <td>{{ h.captured_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ pill(h.overall_status) }}</td>
+        <td class="num">{{ pct(h.field_completeness|float) if h.field_completeness is not none else '—' }}</td>
+        <td class="num">{{ pct(h.mean_data_confidence|float) if h.mean_data_confidence is not none else '—' }}</td>
+        <td class="num">{{ pct(h.insufficient_data_rate|float) if h.insufficient_data_rate is not none else '—' }}</td>
+        <td class="num">{{ pct(h.verification_pass_rate|float) if h.verification_pass_rate is not none else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}
