@@ -67,6 +67,7 @@ from sreoi_persistence.repositories import (
     PropertyRepository,
     SourceRepository,
 )
+from sreoi_pipeline.rental import estimate_and_store_rent
 
 # The sector series used for time adjustment. Residential apartments are the
 # MVP scope; other classes map to their own series as coverage expands.
@@ -323,6 +324,18 @@ def evaluate_opportunity(
             ),
         )
 
+    # Rental estimate and yield (spec section 4). Persisted with its own
+    # assumption set; None when lease evidence is too thin to state a rent.
+    rental = estimate_and_store_rent(
+        session,
+        opportunity,
+        as_of=as_of,
+        longitude=longitude,
+        latitude=latitude,
+        cost=cost,
+        subject_completeness=completeness,
+    )
+
     district = prop.district
     risk = _assess_risk(fair_value, cost, district_known=district is not None)
 
@@ -350,7 +363,7 @@ def evaluate_opportunity(
 
     score = score_opportunity(
         discount_fraction=discount.fraction if isinstance(discount, Discount) else None,
-        gross_yield=None,  # rental engine lands in Slice 3
+        gross_yield=rental.gross_yield if rental is not None else None,
         liquidity=float(district.liquidity_score) if district else 50.0,
         location=float(district.location_score) if district else 50.0,
         developer=50.0 if not prop.developer_name else 65.0,

@@ -257,10 +257,18 @@ def seed_all(session: Session, *, live_index: bool = True) -> dict[str, int]:
     districts = seed_districts(session)
     index_points = seed_price_index(session, sources["kapsarc_rei"], live=live_index)
     transactions = seed_transactions(session, sources[SYNTHETIC_SOURCE_KEY], districts)
+
+    # Rental evidence. Imported here rather than at module scope to keep the
+    # import graph of the evaluation path free of this module.
+    from sreoi_pipeline.rental import seed_rental_comparables
+
+    leases = seed_rental_comparables(session)
+
     session.flush()
     return {
         "sources": len(sources),
         "districts": len(districts),
         "index_points": index_points,
         "synthetic_transactions": transactions,
+        "synthetic_leases": leases,
     }

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}{{ t('watch.title') }} — {{ t('brand') }}{% endblock %}
+
+{% block head %}
+<style>
+  /* base.html styles number inputs only; watch rules need text fields too. */
+  input[type=text], input:not([type]) { width:100%; padding:7px 9px; border:1px solid var(--line);
+    border-radius:6px; background:var(--panel); color:var(--ink); font:inherit; font-size:13px; }
+  .chips .chip { max-width:52ch; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <h1>{{ t('watch.title') }}</h1>
+  <p class="muted">{{ t('watch.subtitle') }}</p>
+  <div class="chips">
+    <span class="chip">{{ t('watch.dedupe') }}</span>
+    <span class="chip">{{ t('watch.assumption_note') }}</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>{{ t('watch.new') }}</h2>
+  <form class="filters" id="wl-form" onsubmit="return createWatchlist(event)">
+    <div>
+      <label for="wl-name">{{ t('watch.name') }}</label>
+      <input id="wl-name" name="name" required value="Riyadh apartments under 1.2M">
+    </div>
+    <div>
+      <label for="wl-owner">{{ t('watch.owner') }}</label>
+      <input id="wl-owner" name="owner_ref" required value="analyst@example.com">
+    </div>
+    <div>
+      <label for="wl-rule">{{ t('watch.rule_name') }}</label>
+      <input id="wl-rule" name="rule_name" value="15% below market, four districts">
+    </div>
+    <div>
+      <label for="wl-districts">{{ t('watch.districts') }}</label>
+      <input id="wl-districts" name="districts"
+             value="Qurtubah,Sidrah,Al Munsiyah,Al Rimal">
+    </div>
+    <div>
+      <label for="wl-types">{{ t('watch.types') }}</label>
+      <input id="wl-types" name="opportunity_types"
+             value="AUCTION,RESALE,ASSIGNMENT,OFF_PLAN_RESALE,DEVELOPER_INVENTORY">
+    </div>
+    <div>
+      <label for="wl-class">{{ t('watch.property_class') }}</label>
+      <input id="wl-class" name="property_class" value="APARTMENT">
+    </div>
+    <div>
+      <label for="wl-cost">{{ t('watch.max_cost') }}</label>
+      <input id="wl-cost" name="max_cost" type="number" step="1000" value="1200000">
+    </div>
+    <div>
+      <label for="wl-discount">{{ t('watch.min_discount') }}</label>
+      <input id="wl-discount" name="min_discount" type="number" step="0.5" value="15">
+    </div>
+    <div>
+      <label for="wl-score">{{ t('watch.min_score') }}</label>
+      <input id="wl-score" name="min_score" type="number" step="1">
+    </div>
+    <div>
+      <label for="wl-yield">{{ t('watch.min_yield') }}</label>
+      <input id="wl-yield" name="min_yield" type="number" step="0.1">
+    </div>
+    <div><button type="submit">{{ t('watch.create') }}</button></div>
+  </form>
+</div>
+
+{% if watchlists %}
+  {% for wl in watchlists %}
+  <div class="panel">
+    <h1 style="font-size:17px">{{ wl.name }}</h1>
+    <div class="muted"><code>{{ wl.owner_ref }}</code></div>
+    <h2 style="margin-top:14px">{{ t('watch.rules') }}</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t('watch.rule_name') }}</th>
+            <th>{{ t('watch.districts') }}</th>
+            <th>{{ t('watch.types') }}</th>
+            <th class="num">{{ t('watch.max_cost') }}</th>
+            <th class="num">{{ t('watch.min_discount') }}</th>
+            <th class="num">{{ t('watch.min_score') }}</th>
+            <th class="num">{{ t('watch.min_yield') }}</th>
+            <th>{{ t('watch.trigger') }}</th>
+            <th class="num">{{ t('watch.matches') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for rule in wl.rules %}
+          <tr>
+            <td>
+              {{ rule.name }}
+              <span class="chip">{{ t('watch.version') }} {{ digits(rule.version) }}</span>
+              {% if rule.has_polygon %}<span class="chip">polygon</span>{% endif %}
+            </td>
+            <td>{{ rule.districts | join(', ') or '—' }}</td>
+            <td>{{ rule.opportunity_types | join(', ') or '—' }}</td>
+            <td class="num">{{ num(rule.max_true_acquisition_cost) }}</td>
+            <td class="num">{{ num(rule.min_discount_pct, 1) }}</td>
+            <td class="num">{{ num(rule.min_score, 1) }}</td>
+            <td class="num">
+              {{ num(rule.min_gross_yield * 100, 1) if rule.min_gross_yield else '—' }}
+            </td>
+            <td>
+              {% for trigger in rule.triggers %}<span class="chip">{{ trigger }}</span>{% endfor %}
+            </td>
+            <td class="num">{{ digits(rule.matches_now) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="panel"><p class="muted">{{ t('watch.empty') }}</p></div>
+{% endif %}
+
+<div class="panel">
+  <h2>{{ t('watch.alerts') }}</h2>
+  <form style="margin-bottom:14px" onsubmit="return runScan(event)">
+    <button class="ghost" type="submit">{{ t('watch.scan') }}</button>
+  </form>
+
+  {% if alerts %}
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('watch.when') }}</th>
+          <th>{{ t('watch.trigger') }}</th>
+          <th>{{ t('watch.reason') }}</th>
+          <th>{{ t('watch.channels') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for alert in alerts %}
+        <tr>
+          <td class="muted">{{ digits(alert.created_at[:19]) }}</td>
+          <td><span class="pill warn">{{ alert.trigger }}</span></td>
+          <td>
+            <a href="/opportunities/{{ alert.opportunity_id }}?lang={{ locale }}">
+              {{ alert.payload.get('opportunity', {}).get('title', alert.opportunity_id) }}</a>
+            <div class="muted">{{ alert.reason }}</div>
+          </td>
+          <td>
+            {% for n in alert.notifications %}
+              {% if n.status == 'DELIVERED' %}
+                <span class="pill good">{{ n.channel }}</span>
+              {% else %}
+                <span class="pill bad" title="{{ n.detail }}">
+                  {{ n.channel }}: {{ t('watch.not_sent') }}</span>
+              {% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">{{ t('watch.alerts_empty') }}</p>
+  {% endif %}
+</div>
+
+<script>
+  // The API is the only write path; this page is a thin client over it, so
+  // there is exactly one place where a rule can be created.
+  const val = id => (document.getElementById(id) || {}).value || "";
+  const csv = id => val(id).split(",").map(s => s.trim()).filter(Boolean);
+  const opt = id => val(id) === "" ? null : Number(val(id));
+
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { alert("Request failed: " + res.status + " " + await res.text()); return false; }
+    location.reload();
+    return true;
+  }
+
+  function createWatchlist(event) {
+    event.preventDefault();
+    const minYield = opt("wl-yield");
+    post("/api/v1/watchlists", {
+      name: val("wl-name"),
+      owner_ref: val("wl-owner"),
+      rules: [{
+        name: val("wl-rule") || "Default rule",
+        districts: csv("wl-districts"),
+        opportunity_types: csv("wl-types"),
+        property_class: val("wl-class") || null,
+        max_true_acquisition_cost: opt("wl-cost"),
+        min_discount_pct: opt("wl-discount"),
+        min_score: opt("wl-score"),
+        // The form asks for a percentage; the rule stores a fraction.
+        min_gross_yield: minYield === null ? null : minYield / 100,
+      }],
+    });
+    return false;
+  }
+
+  function runScan(event) {
+    event.preventDefault();
+    post("/api/v1/alerts/scan", {});
+    return false;
+  }
+</script>
+{% endblock %}
