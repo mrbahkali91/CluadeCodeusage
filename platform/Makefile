@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 export SREOI_DATABASE_URL ?= postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi
 
-.PHONY: help install db-up migrate migrate-down seed demo run test lint format typecheck contracts check clean
+.PHONY: help install db-up deploy migrate migrate-down seed demo run test lint format typecheck contracts check clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -32,7 +32,13 @@ demo:  ## Ingest four demonstration opportunities and score them
 reset-demo:  ## Seed and demo in one step
 	$(PY) -m sreoi_pipeline.cli reset-and-demo
 
-run:  ## Start the API and UI on http://127.0.0.1:8000
+deploy:  ## One command: Postgres + migrations + seed + serve (http://127.0.0.1:8000)
+	./deploy-local.sh
+
+deploy-reset:  ## Same, but rebuild the schema from scratch first
+	RESET=1 ./deploy-local.sh
+
+run:  ## Start the API and UI only (assumes DB is already prepared)
 	.venv/bin/uvicorn sreoi_api.main:app --reload --host 127.0.0.1 --port 8000
 
 test:  ## Run the test suite
