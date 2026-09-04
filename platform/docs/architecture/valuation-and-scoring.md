@@ -84,31 +84,88 @@ base_ppsqm = WeightedMedian({adj_ppsqm(c)}, {w(c)})
 fair_value_base = base_ppsqm × area_p
 ```
 
-### 2.2 Interval
+### 2.2 Interval — `valuation-v2`
 
-The band is the weighted 25th/75th percentiles, widened for thin evidence:
-
-```
-spread_factor = 1 + 0.6 / sqrt(n_effective)
-n_effective   = (Σw)² / Σw²                # Kish effective sample size
-
-low  = WeightedQuantile(0.25) / spread_factor × area_p
-high = WeightedQuantile(0.75) × spread_factor × area_p
-```
-
-`n_effective` rather than a raw count is what makes this honest: twenty comparables of which
-nineteen are marginal is not twenty comparables, and the band widens accordingly.
-
-### 2.3 Valuation confidence
+The band is an empirical weighted quantile pair, with **no inflation term**:
 
 ```
+n_effective = (Σw)² / Σw²                  # Kish effective sample size
+
+low  = WeightedQuantile(0.05) × area_p
+high = WeightedQuantile(0.95) × area_p
+```
+
+`n_effective` rather than a raw count is still what makes the *confidence* honest — twenty
+comparables of which nineteen are marginal is not twenty comparables — but it no longer moves
+the band.
+
+**Why v1 was replaced.** v1 took the (Q25, Q75) pair and widened both ends by
+`1 + 0.6/sqrt(n_effective)`. At the effective sample sizes the engine actually achieves — median
+`n_effective` 5.4, so a factor of ~1.26 on each end — that turned a 12%-wide band into one
+**58.8% of value wide**, reaching 98.7% interval coverage against a 70% target. Coverage bought
+that way is worthless: a band spanning −28%/+28% cannot separate "20% below market" from "fairly
+priced", which is the single decision this product exists to support. The §5.1 discount
+normalisation awards 50/100 at a 10% discount and 80/100 at 20%; under v1 both sat comfortably
+inside the band.
+
+The quantile pair was chosen by sweeping it against both targets on the back-test harness rather
+than by argument. Of seven candidate pairs, exactly one satisfies coverage ≥ 70% **and** width
+≤ 30%:
+
+| Pair | Median width | Coverage | Both targets |
+|---|---|---|---|
+| 0.25 / 0.75 | 12.0% | 40.1% | no |
+| 0.20 / 0.80 | 14.5% | 49.3% | no |
+| 0.15 / 0.85 | 18.5% | 61.2% | no |
+| 0.10 / 0.90 | 21.9% | 67.1% | no |
+| **0.05 / 0.95** | **27.9%** | **71.7%** | **yes** |
+| 0.02 / 0.98 | 30.6% | 76.3% | no |
+| 0.00 / 1.00 | 34.0% | 77.6% | no |
+
+Thin evidence is now reported where it belongs — in the confidence figure — rather than by
+making the value claim vaguer. A band that widens with uncertainty and a confidence score that
+falls with it are not two views of one fact: the first degrades the product's only actionable
+output, and the second does not.
+
+### 2.3 Valuation confidence — `valuation-v2`
+
+```
+dispersion   = IQR / median
+agreement    = max(0, 1 − dispersion / 0.30)
+
 confidence_valuation =
-      0.35 · min(1, n_effective / 12)          # evidence quantity
-    + 0.25 · mean(w)                            # evidence quality
-    + 0.15 · (1 − min(1, IQR/median))           # evidence agreement
+      0.40 · agreement                        # do the comparables agree with EACH OTHER
+    + 0.25 · min(1, n_effective / 12)          # evidence quantity
+    + 0.10 · mean(w)                            # how similar they are to the subject
     + 0.15 · index_quality                      # district=1.0, city=0.7, national=0.4
     + 0.10 · subject_completeness                # known fields on the subject
 ```
+
+**Why the weights moved.** v1 gave 0.25 to `mean(w)` and only 0.15 to agreement. `mean(w)`
+measures how *similar* the comparables are to the subject, which says nothing about whether they
+agree on a price: ten near-identical units in a heterogeneous pocket are all excellent
+comparables that disagree wildly. Track D measured the consequence — **AUC 0.329** for
+predicting an interval hit, and Spearman(confidence, |error|) of **+0.151**, the wrong sign. A
+higher stated confidence went with a *larger* error. v2 inverts the two weights, and the sign
+inverts with them: Spearman **−0.193**, point-error AUC **0.603**.
+
+**The level is deliberately not rescaled.** Stated confidence averages 44% while the estimate
+lands within 12% about 66% of the time, so the score looks under-confident. It is not
+recalibrated upward, because on this corpus the gap is not calibration error — it is the score
+correctly reporting two real evidence deficiencies:
+
+| | Cost to confidence |
+|---|---|
+| NATIONAL-only index tier (`index_quality` 0.4 of 1.0) | −0.090 |
+| Median `n_effective` 5.4 against the 12 treated as full | −0.137 |
+| **Structural ceiling on this corpus** (perfect agreement) | **0.773** |
+
+Median achieved confidence is 0.455 against that 0.773 ceiling. The realised 66% hit rate comes
+from the *fixture generator* being benign, not from the evidence being strong; fitting a scale
+factor to it would erase a true signal in order to match a synthetic distribution. The level
+must be re-fit on real registered transactions, and until then under-confidence is the safe
+direction — it over-refuses rather than over-promises. **District-level index coverage is the
+highest-leverage fix**, worth up to +0.090 on every valuation.
 
 **Refusal condition:** `n_effective < 3` ⇒ no valuation is produced. The property is stored with
 `INSUFFICIENT_COMPARABLES` and shown without a fair-value claim. We do not extrapolate from two sales.

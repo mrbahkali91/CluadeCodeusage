@@ -50,6 +50,38 @@ RIYADH_DISTRICTS: tuple[tuple[str, str, float, float, float, float], ...] = (
 # generate the synthetic corpus.
 _BASE_PPSQM = {"Qurtubah": 7100.0, "Al Munsiyah": 6400.0, "Al Rimal": 5800.0, "Sidrah": 6600.0}
 
+# Per-district dispersion of the three sub-zones the generator lays out west to
+# east across each district's bounding box.
+#
+# This exists because the first version of this generator drew every price from
+# `gauss(1.0, 0.11)` -- one dispersion for the whole city. Under a generator
+# like that, the error on any held-out sale is drawn from the same distribution
+# no matter what its evidence looks like, so *nothing observable can predict
+# it* and no confidence score can be calibrated against it, however well it is
+# built. Track D measured AUC 0.329 on that corpus and could not tell whether
+# the estimator was broken or the fixture simply had no signal to find.
+#
+# Real dispersion is not uniform: a homogeneous compound of near-identical
+# villas trades in a tight range, while a pocket mixing plot sizes and ages
+# does not. Making sigma vary by locality gives the estimator something to
+# detect -- comparables drawn from a heterogeneous zone genuinely disagree more,
+# and genuinely predict a larger error. A confidence score can then be right or
+# wrong about it, which is the point.
+_ZONE_SIGMA: dict[str, tuple[float, float, float]] = {
+    "Qurtubah": (0.045, 0.100, 0.185),
+    "Al Munsiyah": (0.060, 0.115, 0.200),
+    "Al Rimal": (0.075, 0.130, 0.215),
+    "Sidrah": (0.050, 0.105, 0.175),
+}
+
+# Unusual sizes trade in thinner markets, so their prices scatter more. Applied
+# on top of the zone term as a mild multiplier on sigma, keyed off how far the
+# area sits from the district's typical 150 m².
+_AREA_SIGMA_SLOPE = 0.55
+_TYPICAL_AREA_SQM = 150.0
+
+_ZONE_COUNT = 3
+
 
 def _point(lon: float, lat: float) -> str:
     return f"SRID=4326;POINT({lon} {lat})"
@@ -210,6 +242,9 @@ def seed_transactions(
         "per_district": per_district,
         "districts": sorted(districts),
         "synthetic": True,
+        "dispersion": "heteroscedastic-v2",
+        "zone_sigma": {k: list(v) for k, v in sorted(_ZONE_SIGMA.items())},
+        "area_sigma_slope": _AREA_SIGMA_SLOPE,
     }
     session.add(
         SourceRecord(
@@ -229,12 +264,24 @@ def seed_transactions(
             transacted = today - timedelta(days=days_ago)
             # Gentle upward drift plus dispersion.
             drift = 1.0 - (days_ago / 365.0) * 0.045
-            ppsqm = base * drift * rng.gauss(1.0, 0.11)
-            ppsqm = max(2500.0, ppsqm)
             area = round(rng.uniform(95, 210), 1)
             offset = 0.014
             t_lon = lon + rng.uniform(-offset, offset)
             t_lat = lat + rng.uniform(-offset, offset)
+
+            # Dispersion depends on where and what, not on nothing. The zone is
+            # a longitude band so it is spatially coherent: comparables found
+            # near a subject mostly share its zone, which is exactly how the
+            # estimator gets to observe the local dispersion.
+            zone = min(
+                _ZONE_COUNT - 1,
+                max(0, int((t_lon - (lon - offset)) / (2 * offset) * _ZONE_COUNT)),
+            )
+            sigma = _ZONE_SIGMA[name_en][zone] * (
+                1.0 + _AREA_SIGMA_SLOPE * abs(area - _TYPICAL_AREA_SQM) / _TYPICAL_AREA_SQM
+            )
+            ppsqm = base * drift * rng.gauss(1.0, sigma)
+            ppsqm = max(2500.0, ppsqm)
             session.add(
                 Transaction(
                     source_id=source.id,

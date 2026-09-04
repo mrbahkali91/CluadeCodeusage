@@ -21,7 +21,36 @@ from sreoi_domain.stats import (
     weighted_quantile,
 )
 
-METHOD_VERSION = "valuation-v1"
+METHOD_VERSION = "valuation-v2"
+
+# --------------------------------------------------------------------------
+# Band policy
+#
+# `valuation-v1` took the weighted (Q25, Q75) pair and then widened both ends
+# by `1 + 0.6/sqrt(n_eff)`. At the effective sample sizes the engine actually
+# achieves -- median n_eff 5.64, so a factor of ~1.25 on each end -- that
+# inflated a 13.6%-wide band to 58.8% of value, reaching 98.7% coverage
+# against a 70% target. Coverage bought that way is worthless: a band spanning
+# -28%/+28% cannot separate "20% below market" from "fairly priced", which is
+# the one decision this product exists to support.
+#
+# `valuation-v2` states the interval as an empirical weighted quantile pair
+# with no inflation. The band is then a claim about the evidence rather than
+# about a sampling distribution the evidence cannot support, and its coverage
+# is whatever it measures -- published, not engineered.
+# Chosen by sweeping the pair against the spec's two targets (coverage >= 70%,
+# width <= 30%) on the back-test harness. Of (0.25,0.75), (0.20,0.80),
+# (0.15,0.85), (0.10,0.90), (0.05,0.95), (0.02,0.98) and (0.0,1.0), exactly one
+# satisfies both: 0.05/0.95 gives 27.9% width at 71.7% coverage. Q10/Q90 is
+# narrower (21.9%) but covers only 67.1%, and anything wider breaches the width
+# ceiling. See TRACK-D.md for the full sweep.
+BAND_LOWER_QUANTILE = 0.05
+BAND_UPPER_QUANTILE = 0.95
+
+# The interquartile spread, as a fraction of the estimate, at which the
+# agreement term reaches zero. 0.30 means comparables whose middle half spans
+# 30% of the estimate contribute no confidence at all.
+DISPERSION_FULL_PENALTY = 0.30
 
 # Kernel bandwidths (documented defaults; see spec section 1.2).
 LAMBDA_DISTANCE_M = 1200.0
@@ -272,22 +301,29 @@ def value_property(
         raise InsufficientComparablesError(eff_n, len(included))
 
     base_ppsqm = weighted_median(values, weights)
+    low_ppsqm = weighted_quantile(values, weights, BAND_LOWER_QUANTILE)
+    high_ppsqm = weighted_quantile(values, weights, BAND_UPPER_QUANTILE)
+
     q1 = weighted_quantile(values, weights, 0.25)
     q3 = weighted_quantile(values, weights, 0.75)
+    median_v = base_ppsqm
 
-    # Widen the band when evidence is thin.
-    spread = 1.0 + 0.6 / math.sqrt(eff_n)
-    low_ppsqm = q1 / spread
-    high_ppsqm = q3 * spread
-
-    median_v = weighted_median(values, weights)
-    agreement = 1.0 - min(1.0, (q3 - q1) / median_v) if median_v > 0 else 0.0
+    # How much the comparables disagree with *each other*, as a fraction of the
+    # estimate. This is the term that predicts error, and in v1 it carried only
+    # 0.15 of the weight while `mean(w)` -- how similar the comparables are to
+    # the subject -- carried 0.25. Similarity to the subject says nothing about
+    # whether the evidence agrees on a price: ten near-identical units in a
+    # heterogeneous pocket are all excellent comparables that disagree wildly.
+    # Track D measured the consequence as AUC 0.329, i.e. the score ranked
+    # misses above hits.
+    dispersion = (q3 - q1) / median_v if median_v > 0 else 1.0
+    agreement = max(0.0, 1.0 - dispersion / DISPERSION_FULL_PENALTY)
     quality = sum(weights) / len(weights)
 
     confidence = (
-        0.35 * min(1.0, eff_n / 12.0)
-        + 0.25 * quality
-        + 0.15 * agreement
+        0.40 * agreement
+        + 0.25 * min(1.0, eff_n / 12.0)
+        + 0.10 * quality
         + 0.15 * index_tier.quality
         + 0.10 * subject_completeness
     )
