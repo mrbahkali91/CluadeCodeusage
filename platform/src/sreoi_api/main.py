@@ -27,6 +27,7 @@ from sreoi_api.i18n import (
     normalise_locale,
     translator,
 )
+from sreoi_api.routers import discover
 from sreoi_api.schemas import (
     OpportunityDetail,
     OpportunitySummary,
@@ -74,6 +75,10 @@ app = FastAPI(
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Feature routers are discovered, not registered by hand (see routers/__init__).
+for _feature_router in discover():
+    app.include_router(_feature_router)
 
 
 def get_session() -> Iterator[Session]:

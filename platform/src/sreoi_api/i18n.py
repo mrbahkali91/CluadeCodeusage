@@ -200,6 +200,15 @@ CATALOGUE: dict[str, dict[str, str]] = {
 }
 
 
+def register_strings(locale: str, mapping: dict[str, str]) -> None:
+    """Add translations from a feature module.
+
+    Keeps the catalogue extensible without every feature editing this file.
+    Call it at import time from the feature's own module.
+    """
+    CATALOGUE.setdefault(locale, {}).update(mapping)
+
+
 def normalise_locale(value: str | None) -> str:
     if value and value.lower()[:2] in LOCALES:
         return value.lower()[:2]

@@ -9,7 +9,13 @@ from contextlib import contextmanager
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from sreoi_persistence.model_modules import load_all
+
 DEFAULT_URL = "postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi"
+
+# Feature tables live in models_<feature>.py and are discovered rather than
+# hand-imported, so that concurrent work never contends over an import list.
+_LOADED_MODEL_MODULES = load_all()
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
