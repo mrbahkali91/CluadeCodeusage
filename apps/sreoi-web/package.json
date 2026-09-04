@@ -1,0 +1,32 @@
+{
+	"name": "@sreoi/web",
+	"type": "module",
+	"version": "0.1.0",
+	"private": true,
+	"description": "React client for the Saudi Real Estate Opportunity Intelligence platform",
+	"license": "MIT",
+	"scripts": {
+		"build": "vite build",
+		"dev": "vite",
+		"format": "pnpm run lint --fix",
+		"lint": "eslint --cache .",
+		"preview": "vite preview",
+		"test": "TZ=UTC vitest",
+		"typecheck": "tsgo --noEmit"
+	},
+	"dependencies": {
+		"maplibre-gl": "catalog:web",
+		"react": "catalog:web",
+		"react-dom": "catalog:web"
+	},
+	"devDependencies": {
+		"@ryoppippi/eslint-config": "catalog:lint",
+		"@types/geojson": "catalog:types",
+		"@types/react": "catalog:types",
+		"@types/react-dom": "catalog:types",
+		"@typescript/native-preview": "catalog:types",
+		"eslint": "catalog:lint",
+		"vite": "catalog:web",
+		"vitest": "catalog:testing"
+	}
+}

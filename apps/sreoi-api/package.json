@@ -1,0 +1,38 @@
+{
+	"name": "@sreoi/api",
+	"type": "module",
+	"version": "0.1.0",
+	"private": true,
+	"description": "NestJS API for the Saudi Real Estate Opportunity Intelligence platform",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20.19.4"
+	},
+	"scripts": {
+		"dev": "bun -b --watch ./src/main.ts",
+		"format": "pnpm run lint --fix",
+		"lint": "eslint --cache .",
+		"start": "bun -b ./src/main.ts",
+		"test": "TZ=UTC vitest",
+		"typecheck": "tsgo --noEmit"
+	},
+	"dependencies": {
+		"@nestjs/common": "catalog:nest",
+		"@nestjs/core": "catalog:nest",
+		"@nestjs/platform-express": "catalog:nest",
+		"jose": "catalog:nest",
+		"pg": "catalog:nest",
+		"reflect-metadata": "catalog:nest",
+		"rxjs": "catalog:nest",
+		"zod": "catalog:runtime"
+	},
+	"devDependencies": {
+		"@ryoppippi/eslint-config": "catalog:lint",
+		"@types/express": "catalog:types",
+		"@types/node": "catalog:types",
+		"@types/pg": "catalog:types",
+		"@typescript/native-preview": "catalog:types",
+		"eslint": "catalog:lint",
+		"vitest": "catalog:testing"
+	}
+}
