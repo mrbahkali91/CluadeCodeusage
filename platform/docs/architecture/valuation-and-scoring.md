@@ -109,8 +109,8 @@ normalisation awards 50/100 at a 10% discount and 80/100 at 20%; under v1 both s
 inside the band.
 
 The quantile pair was chosen by sweeping it against both targets on the back-test harness rather
-than by argument. Of seven candidate pairs, exactly one satisfies coverage ≥ 70% **and** width
-≤ 30%:
+than by argument. Of seven candidate pairs (measured with no index, tier `NONE`), exactly one
+satisfies coverage ≥ 70% **and** width ≤ 30%:
 
 | Pair | Median width | Coverage | Both targets |
 |---|---|---|---|
@@ -121,6 +121,16 @@ than by argument. Of seven candidate pairs, exactly one satisfies coverage ≥ 7
 | **0.05 / 0.95** | **27.9%** | **71.7%** | **yes** |
 | 0.02 / 0.98 | 30.6% | 76.3% | no |
 | 0.00 / 1.00 | 34.0% | 77.6% | no |
+
+**With the live NATIONAL index present, no pair meets both targets.** Q05/Q95 gives 29.1% width
+at 68.4% coverage and the next pair out breaches the width ceiling to reach 73.7%. Q05/Q95 is
+retained as the least-bad point on that frontier: it holds the width ceiling — the target that
+makes the band usable at all — and misses coverage by 1.6 points. The coverage target is
+**currently unmet, and cannot be met by choosing a different quantile**: the error distribution's
+heavy tail (p90 25.75% against a 7.27% median) is driven by cases where the comparables agree
+closely and are collectively wrong, because the NATIONAL index does not track district-level
+drift. A band built from comparable spread cannot anticipate that. District-level index coverage
+is the fix, and it is the same fix for the confidence ceiling and the residual bias.
 
 Thin evidence is now reported where it belongs — in the confidence figure — rather than by
 making the value claim vaguer. A band that widens with uncertainty and a confidence score that
@@ -154,13 +164,18 @@ lands within 12% about 66% of the time, so the score looks under-confident. It i
 recalibrated upward, because on this corpus the gap is not calibration error — it is the score
 correctly reporting two real evidence deficiencies:
 
-| | Cost to confidence |
-|---|---|
-| NATIONAL-only index tier (`index_quality` 0.4 of 1.0) | −0.090 |
-| Median `n_effective` 5.4 against the 12 treated as full | −0.137 |
-| **Structural ceiling on this corpus** (perfect agreement) | **0.773** |
+| Term | Weight | Median contribution | % of max |
+|---|---|---|---|
+| Comparable agreement | 0.40 | 0.239 | 60% |
+| Evidence quantity (`n_eff` 5.41 / 12) | 0.25 | 0.113 | 45% |
+| **Index quality** (NATIONAL, 0.4) | 0.15 | 0.060 | **40%** |
+| Subject completeness | 0.10 | 0.075 | 75% |
+| Similarity to subject | 0.10 | 0.027 | 27% |
+| **Total** | 1.00 | **0.514** | **51%** |
 
-Median achieved confidence is 0.455 against that 0.773 ceiling. The realised 66% hit rate comes
+Against the gates, 16% of cases clear 0.60 and none clear 0.75. What raises it, each row changing
+one thing: CITY index → 0.560; **DISTRICT index → 0.605 (53% clear 0.60)**; `n_eff` 12 → 0.651;
+**both → 0.741 (84% clear 0.60, 45% clear 0.75)**. The realised 66% hit rate comes
 from the *fixture generator* being benign, not from the evidence being strong; fitting a scale
 factor to it would erase a true signal in order to match a synthetic distribution. The level
 must be re-fit on real registered transactions, and until then under-confidence is the safe

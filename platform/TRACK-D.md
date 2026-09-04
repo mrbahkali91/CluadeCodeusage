@@ -2,12 +2,24 @@
 
 ## Status
 
-The two headline defects this document reported — a valuation band too wide to act on, and a
-confidence score that ranked misses above hits — are **fixed as of `valuation-v2`**. The band is
-27.9% of value at 71.7% coverage (both spec targets met, for the first time), and
-Spearman(confidence, |error|) is −0.193 where it was +0.151. The corpus generator was made
-heteroscedastic first, because the original one made the confidence question unanswerable in
-principle. Details in "The finding that mattered, and how it was resolved".
+The two headline defects this document reported are addressed as of `valuation-v2`, but only one
+of them is fully *closed*:
+
+- **Confidence inversion — FIXED.** Spearman(confidence, |error|) is **−0.166** where it was
+  +0.151, and point-error AUC is **0.620** where it was 0.476. The sign is correct at every seed
+  tested.
+- **Band too wide to act on — FIXED. Coverage target — NOT MET.** Width fell from 58.8% of value
+  to **29.1%**, which was the point: the band is actionable for the first time. Coverage is
+  **68.4%** against a ≥70% target, and a sweep shows **no quantile pair meets both targets** on
+  this corpus. The reason is a mismatched price index, not the band.
+
+The corpus generator was made heteroscedastic first, because the original one made the confidence
+question unanswerable in principle.
+
+**One thing to know before reading further:** an earlier draft of this document reported 71.6%
+coverage and claimed both targets met. Those figures came from a corpus seeded `--offline`, which
+loads zero index points and therefore performs no time adjustment at all — not the product's
+configuration. Every number below is measured with the live index unless it says otherwise.
 
 ## Read this before quoting any number below
 
@@ -47,19 +59,48 @@ export SREOI_DATABASE_URL="postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi
 240 corpus rows · 177 eligible (63 excluded for under 180 days of prior evidence) · 177 held
 out · seed `20260904` · 975 ms.
 
-| Metric | `valuation-v1` | **`valuation-v2`** | Target | Verdict |
-|---|---|---|---|---|
-| Median absolute % error | 7.88% | **7.04%** | ≤ 12% | **PASS** |
-| Mean absolute % error | 9.24% | 11.36% | — | — |
-| p90 absolute % error | 17.24% | 26.61% | — | — |
-| Bias (median signed error) | −2.55% | **−0.98%** | — | under-values |
-| **Interval coverage** | 98.7% | **71.7%** | ≥ 70% | **PASS** |
-| **Median band width** | **58.8%** FAIL | **27.9% of value** | ≤ 30% | **PASS** |
-| Refused | 23 / 177 (13.0%) | 25 / 177 (14.1%) | — | correct behaviour |
-| Mean stated confidence | 50.1% | 44.2% | — | see §confidence |
+**Configuration matters, and an earlier draft of this table got it wrong.** These figures were
+first measured on a corpus seeded with `--offline`, which loads **zero** index points, so the
+index tier was `NONE` and no time adjustment ran at all. That configuration is not the product.
+The table below is measured with the **live KAPSARC index (312 points, NATIONAL tier)**, matching
+the v1 column. The offline figures are kept in the last column because the difference is itself
+the finding.
 
-Both spec targets are met for the first time. The v1 column met coverage only by inflating the
-band past the point of usefulness; see the analysis below.
+| Metric | `v1` | **`v2` (live index)** | `v2` (no index) | Target | Verdict |
+|---|---|---|---|---|---|
+| Median absolute % error | 7.88% | **7.27%** | 7.04% | ≤ 12% | **PASS** |
+| Mean absolute % error | 9.24% | 11.48% | 11.36% | — | — |
+| p90 absolute % error | 17.24% | 25.75% | 26.61% | — | — |
+| Bias (median signed error) | −2.55% | **−1.06%** | −0.98% | — | under-values |
+| **Interval coverage** | 98.7% | **68.4%** | 71.7% | ≥ 70% | **FAIL by 1.6 pt** |
+| **Median band width** | **58.8%** FAIL | **29.1% of value** | 27.9% | ≤ 30% | **PASS** |
+| Refused | 23/177 (13.0%) | 25/177 (14.1%) | 25/177 | — | correct behaviour |
+| Mean stated confidence | 50.1% | 50.0% | 44.2% | — | see §confidence |
+
+**The band defect is fixed; the coverage target is not met, and on this corpus it cannot be.**
+Width fell from 58.8% to 29.1% — the band is actionable for the first time, which was the point.
+But coverage lands at 68.4%, and sweeping the quantile pair shows there is **no pair that
+satisfies both targets** once the index is present:
+
+| Pair | Width | Coverage | Both targets |
+|---|---|---|---|
+| 0.10 / 0.90 | 22.8% | 65.8% | no |
+| **0.05 / 0.95** | **29.1%** | **68.4%** | no — closest |
+| 0.02 / 0.98 | 32.1% | 73.7% | no — breaches width |
+
+The frontier steps straight over the feasible box. Q05/Q95 is retained as the least-bad choice:
+it holds the width ceiling and misses coverage by 1.6 points, where the alternative misses width
+by 2.1 points to buy 5.3 points of coverage.
+
+**Why the two cannot both be met.** The error distribution has heavy tails — p90 is 25.75%
+against a median of 7.27%, a ratio of 3.5. A band derived from the *spread of the comparables*
+cannot anticipate error in the *estimate* for the cases that dominate that tail: those are cases
+where the comparables agree closely and are collectively wrong, because the NATIONAL index used
+for time adjustment does not track the district-level drift. No choice of quantile fixes that;
+it is finding 5 below, and it is the same root cause that caps confidence.
+
+Note that adding the index made coverage *worse* (71.7% → 68.4%) while barely moving median
+error. A mismatched index is not a neutral input: it injects error the band cannot see.
 
 The wider mean and p90 errors under v2 are a **fixture change, not a regression**: the corpus
 generator is now heteroscedastic (see below), so it contains genuinely harder cases that the
@@ -81,53 +122,90 @@ estimator and produce neither set of figures. Rebuild with `RESET=1 ./deploy-loc
 
 ### Confidence calibration (E4.4, spec §7 row 4)
 
-152 valued cases. Two criteria are measured, and **the point-error criterion is now the primary
-one** — see the note below on why the interval criterion cannot fairly judge an adaptive band.
+152 valued cases, live index. **The point-error criterion is the primary one** — see the note on
+why the interval criterion cannot fairly judge an adaptive band.
 
 | Metric | `valuation-v1` | **`valuation-v2`** | Reading |
 |---|---|---|---|
-| Spearman(confidence, \|error\|) | **+0.151** | **−0.193** | v1 had the **wrong sign** |
-| Point-error AUC (within 12%) | 0.476 | **0.603** | v1 was at chance, v2 discriminates |
-| Interval-hit AUC | **0.329** | 0.429 | still below 0.5 — structural, see below |
-| Mean confidence, cases within 12% | — | **0.457** | correctly higher |
-| Mean confidence, cases outside 12% | — | **0.415** | correctly lower |
-| Mean claimed / realised (point) | 50.1% / 72.1% | 44.2% / 65.8% | under-states |
+| Spearman(confidence, \|error\|) | **+0.151** | **−0.166** | v1 had the **wrong sign** |
+| Point-error AUC (within 12%) | 0.476 | **0.620** | v1 was at chance, v2 discriminates |
+| Interval-hit AUC | **0.329** | 0.382 | still below 0.5 — structural, see below |
+| Mean claimed / realised (point) | 50.1% / 72.1% | 50.0% / 67.8% | under-states |
 
-**The sign defect is fixed.** Under v1, a higher stated confidence went with a *larger* absolute
-error, and the score ranked misses above hits — worse than a constant. Under v2 the ordering is
+**The sign defect is fixed.** Under v1 a higher stated confidence went with a *larger* absolute
+error, so the score ranked misses above hits — worse than a constant. Under v2 the ordering is
 correct at every seed tested.
 
-**The interval-hit AUC is not a defect to chase.** Sweeping the band quantile pair moves it
-between 0.355 and 0.435 and it never reaches 0.5 for *any* pair, while point-error AUC stays
-fixed at 0.603 throughout. The reason is structural: with an empirical-quantile band, the band
-**narrows exactly when confidence rises** — both are driven by comparable agreement. A confident
-case therefore states a tighter interval, which is intrinsically *less* likely to contain the
-realised price. A confidence score cannot simultaneously predict "small error" and "interval
-hit" while the band is adaptive; the two criteria are in tension by construction. Point error is
-the criterion that describes what the score is for, so it is the one reported first.
+**The interval-hit AUC is not a defect to chase.** Sweeping the band pair moves it between 0.353
+and 0.391 and it never reaches 0.5 for *any* pair, while point-error AUC stays fixed at 0.620
+throughout. This is structural: with an empirical-quantile band, the band **narrows exactly when
+confidence rises** — both are driven by comparable agreement — so a confident case states a
+tighter interval, which is intrinsically *less* likely to contain the realised price. A score
+cannot simultaneously predict "small error" and "interval hit" while the band is adaptive.
 
-**The level is deliberately left un-rescaled.** Confidence averages 44% against a 66% realised
-hit rate, which looks like textbook under-confidence — but on this corpus the gap is not
-calibration error. It is the score correctly reporting evidence deficiencies that are really
-there:
+### Where the confidence number actually comes from
 
-| | Cost to confidence |
-|---|---|
-| NATIONAL-only index tier (`index_quality` 0.4 of 1.0) | −0.090 |
-| Median `n_effective` 5.41 against the 12 treated as full | −0.137 |
-| **Structural ceiling on this corpus**, at perfect agreement | **0.773** |
+This is the decomposition, measured term by term on the 152 valued cases, and it is the answer
+to "why is confidence low and how do we raise it".
 
-Median achieved confidence is 0.455 against that 0.773 ceiling. The realised 66% comes from the
-*generator* being benign — an unbiased estimator against σ of 4.5–21% — not from the evidence
-being strong. Fitting a scale factor to close the gap would erase a true signal in order to
-match a synthetic distribution, and would be wrong on real data in an unknown direction.
-Under-confidence is the safe direction: it over-refuses rather than over-promises. The level
-must be re-fit on real registered transactions.
+| Term | Weight | Median contribution | % of its max | Headroom |
+|---|---|---|---|---|
+| Comparable agreement | 0.40 | 0.239 | 60% | 0.161 |
+| Evidence quantity (`n_eff`/12) | 0.25 | 0.113 | **45%** | 0.137 |
+| **Index quality** | 0.15 | 0.060 | **40%** | **0.090** |
+| Subject completeness | 0.10 | 0.075 | 75% | 0.025 |
+| Similarity to subject (`mean w`) | 0.10 | 0.027 | 27% | 0.073 |
+| **Total** | 1.00 | **0.514** | **51%** | 0.486 |
 
-**Measured cost of that choice:** the share of live opportunities reading `INSUFFICIENT_DATA`
-rose from 37.5% to **41.1%**, because v2 is correctly less confident where the evidence
-genuinely disagrees. That is the price of an honest gate, and **district-level index coverage is
-the highest-leverage fix** — worth up to +0.090 on every valuation, against a 0.60 gate.
+Supporting medians: dispersion (IQR/median) **0.121** against the 0.30 at which agreement reaches
+zero; `n_effective` **5.41** against the 12 treated as full evidence; subject completeness 0.75.
+
+Against the product's gates, **16% of cases clear 0.60 and none clear 0.75.** The score is not
+being pessimistic — the evidence really is this thin.
+
+### What would raise it, quantified
+
+Each row holds every other term at its measured value and changes one thing:
+
+| Change | Median confidence | ≥ 0.60 gate | ≥ 0.75 gate |
+|---|---|---|---|
+| *Today* | 0.515 | 16% | 0% |
+| CITY index tier (0.7) | 0.560 | 36% | 1% |
+| **DISTRICT index tier (1.0)** | **0.605** | **53%** | 4% |
+| `n_effective` at 12 | 0.651 | 66% | 6% |
+| **DISTRICT index + `n_eff` 12** | **0.741** | **84%** | **45%** |
+
+Two conclusions, and they are the whole roadmap for this number:
+
+1. **District-level index data is the highest-leverage single fix.** It is worth +0.090 on every
+   valuation, moves the median past the 0.60 gate on its own, and takes the share of scoreable
+   opportunities from 16% to 53%. It is also the fix for the coverage target and for the residual
+   bias — the same mismatched NATIONAL index causes all three. Nothing else in this table is one
+   dataset away.
+2. **Neither fix alone reaches the 0.75 "strong recommendation" gate; together they nearly do.**
+   45% of cases clear 0.75 with both. Reaching that gate is not a scoring-formula problem — no
+   reweighting creates evidence — it is an evidence-acquisition problem, and it has exactly two
+   named inputs.
+
+`n_effective` is the harder of the two: at 5.41 against a 12-comparable target it is limited by
+the multiplicative kernel, where one mismatched dimension vetoes a comparable (finding 4). Raising
+it means either more transaction density per district — which is assumption **A-01**, still
+unvalidated — or widening the veto bandwidths, which trades evidence quantity against comparable
+relevance and must be measured, not assumed.
+
+**The level is deliberately left un-rescaled.** Confidence averages 50% against a 68% realised
+hit rate, which looks like textbook under-confidence. It is not recalibrated, because the table
+above shows the gap is not calibration error: it is the score correctly reporting that the index
+contributes 40% of its possible value and evidence quantity 45% of its own. The realised 68%
+comes from the *fixture generator* being benign — an unbiased estimator against σ of 4.5–21% —
+not from the evidence being strong. Fitting a scale factor would erase a true signal to match a
+synthetic distribution, and would be wrong on real data in an unknown direction. Under-confidence
+over-refuses rather than over-promises, which is the safe direction. The level must be re-fit on
+real registered transactions.
+
+**Measured cost of that choice:** the share of live opportunities reading `INSUFFICIENT_DATA` rose
+from 37.5% to **41.1%**, because v2 is correctly less confident where the evidence genuinely
+disagrees. That is the price of an honest gate.
 
 ### The fixture defect that made this measurable
 
@@ -181,7 +259,7 @@ because no register is integrated; provenance 101 ACTUAL / 86 ESTIMATE / 56 RULE
 what was wrong and why, because the reasoning is the useful part and the numbers above are
 meaningless without it.
 
-### 1. The band was honest but useless — RESOLVED
+### 1. The band was honest but useless — WIDTH FIXED, COVERAGE TARGET NOT MET
 
 The v1 band covered 98.7% of realised prices against a 70% target, and was **58.8% of value
 wide**. A band spanning −28%/+28% cannot distinguish "20% below market" from "fairly priced",
@@ -202,8 +280,9 @@ evidence — so the spread factor sat at ~1.26 and, applied to both ends, inflat
 factor of 4.3. The design offered no setting between 40% and 99% coverage.
 
 **Resolution.** The inflation term is gone and the band is now an empirical weighted quantile
-pair. The pair was chosen by sweeping it against both spec targets rather than by argument; of
-seven candidates, exactly one satisfies coverage ≥ 70% **and** width ≤ 30%:
+pair, chosen by sweeping it against both spec targets rather than by argument. The sweep below is
+run **without** an index (tier `NONE`); it is kept because it is what led to the Q05/Q95 choice,
+but note the caveat that follows it:
 
 | Pair | Width | Coverage | med \|e\| | point AUC | Both targets |
 |---|---|---|---|---|---|
@@ -220,6 +299,15 @@ the choice — median error and point AUC are constant down the table — so thi
 decision about how to *state* uncertainty. And v1's own recommendation (Q10/Q90 plus a shrunken
 inflation term) would **not** have met both targets: Q10/Q90 covers only 67.1%. The sweep was
 worth running instead of trusting the recommendation.
+
+**The caveat, and it is the important part.** Re-run with the live index, the whole frontier
+shifts and **no pair meets both targets** — Q05/Q95 gives 29.1% width at 68.4% coverage, and the
+next pair out breaches the width ceiling to reach 73.7%. Q05/Q95 remains the right choice as the
+least-bad point on that frontier, but the coverage target is unmet and cannot be met by choosing
+a different quantile. See the headline table for why: the error distribution's heavy tail is
+driven by cases where the comparables agree and are collectively wrong, which a band built from
+comparable spread cannot anticipate. That is finding 5, and district-level index data is the fix
+for it.
 
 ### 2. The confidence figure was inverted — RESOLVED
 
