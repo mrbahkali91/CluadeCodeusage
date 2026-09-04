@@ -24,6 +24,11 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "import-linter>=2.0",
+    # Document intelligence: pdfminer.six reads page text, fpdf2 builds the
+    # multi-page Arabic brochure fixture. See TRACK-B.md -- pdfminer.six needs
+    # promoting to a runtime dependency before PDF ingestion ships.
+    "pdfminer.six>=20240706",
+    "fpdf2>=2.7",
 ]
 
 [build-system]
@@ -45,6 +50,15 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 # En dashes are intentional typography in user-facing summaries.
 "src/sreoi_agents/checkers.py" = ["RUF001"]
+# Arabic real-estate vocabulary, Arabic-Indic numerals and the Arabic decimal
+# separator are the subject matter here, not confusable typos.
+"src/sreoi_agents/extraction.py" = ["RUF001"]
+"src/sreoi_agents/documents.py" = ["RUF001"]
+"src/sreoi_api/routers/extraction.py" = ["RUF001"]
+"tests/fixtures/listings.py" = ["RUF001"]
+"tests/fixtures/documents.py" = ["RUF001"]
+"tests/test_extraction.py" = ["RUF001"]
+"tests/test_documents.py" = ["RUF001"]
 # Translation strings are single logical units; wrapping them hurts readability
 # and makes diffs of catalogue changes unreadable.
 "src/sreoi_api/i18n.py" = ["E501"]
