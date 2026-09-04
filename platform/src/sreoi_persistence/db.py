@@ -39,6 +39,21 @@ def get_session_factory() -> sessionmaker[Session]:
     return _session_factory
 
 
+def bind_tenant(session: Session, organization_id: object | None) -> None:
+    """Set the PostgreSQL session variable that row-level security keys on.
+
+    SET LOCAL scopes it to the surrounding transaction, so a pooled connection
+    cannot leak one request's tenant into the next.
+    """
+    if organization_id is None:
+        session.execute(text("SELECT set_config('app.organization_id', '', true)"))
+        return
+    session.execute(
+        text("SELECT set_config('app.organization_id', :org, true)"),
+        {"org": str(organization_id)},
+    )
+
+
 @contextmanager
 def session_scope() -> Iterator[Session]:
     session = get_session_factory()()

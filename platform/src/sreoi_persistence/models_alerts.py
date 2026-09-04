@@ -30,6 +30,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -49,6 +50,18 @@ class Watchlist(Base):
     """A saved monitoring intent belonging to one user."""
 
     __tablename__ = "watchlists"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (Index("ix_watchlists_owner", "owner_ref"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
@@ -73,6 +86,18 @@ class WatchRule(Base):
     """
 
     __tablename__ = "watch_rules"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         Index("ix_watch_rules_polygon", "polygon", postgresql_using="gist"),
         CheckConstraint("version >= 1", name="ck_watch_rule_version_positive"),
@@ -116,6 +141,18 @@ class Alert(Base):
     """Append-only. One row per (rule version, opportunity, reason)."""
 
     __tablename__ = "alerts"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         UniqueConstraint("dedupe_key", name="uq_alert_dedupe_key"),
         CheckConstraint("btrim(reason) <> ''", name="ck_alert_has_reason"),
@@ -151,6 +188,18 @@ class Notification(Base):
     """
 
     __tablename__ = "notifications"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         UniqueConstraint("alert_id", "channel", name="uq_notification_alert_channel"),
         Index("ix_notifications_status", "status"),
@@ -175,6 +224,18 @@ class AlertFeedback(Base):
     """
 
     __tablename__ = "alert_feedback"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         CheckConstraint(
             "action IN ('ACKNOWLEDGED','USEFUL','NOT_USEFUL')", name="ck_alert_feedback_action"

@@ -33,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,6 +58,18 @@ class Document(Base):
     """
 
     __tablename__ = "documents"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         UniqueConstraint("content_sha256", name="uq_documents_content_sha256"),
         CheckConstraint("page_count >= 1", name="ck_documents_page_count_positive"),
@@ -97,6 +110,18 @@ class DocumentExtractionRow(Base):
     """One conclusion drawn from one page, with the excerpt that supports it."""
 
     __tablename__ = "document_extractions"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         # The product claim is "every conclusion traces to a page". These two
         # constraints are that claim, made unbypassable.

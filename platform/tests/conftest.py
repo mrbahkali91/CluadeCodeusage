@@ -80,6 +80,12 @@ def seeded_db() -> Iterator[None]:
     ensure_extensions()
     Base.metadata.drop_all(get_engine())
     Base.metadata.create_all(get_engine())
+    # create_all does not create policies, so without this the test suite would
+    # never exercise tenant isolation at all.
+    from sreoi_persistence.rls import enable_row_level_security
+
+    with get_engine().begin() as connection:
+        enable_row_level_security(connection)
     with session_scope() as session:
         # live_index=False keeps the test suite offline and deterministic.
         seed_all(session, live_index=False)
@@ -146,3 +152,74 @@ def session(seeded_db: None) -> Iterator[Session]:
         db.rollback()
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------
+# Authentication for API tests.
+#
+# Auth is enforced by middleware on every non-public route, so a TestClient
+# with no credentials gets 401 everywhere. These fixtures give the suite a real
+# credential rather than a bypass: the tests exercise the same code path a user
+# would, which is the point of having enforcement at all.
+
+TEST_DEV_SECRET = "pytest-dev-secret-do-not-use-outside-tests"
+TEST_ORG_SLUG = "pytest-org"
+TEST_USER_EMAIL = "pytest@example.com"
+TEST_USER_PASSWORD = "pytest-password"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _dev_auth_env() -> Iterator[None]:
+    """Enable the local development issuer for the whole test session."""
+    previous = {
+        key: os.environ.get(key)
+        for key in (
+            "SREOI_AUTH_DEV_MODE",
+            "SREOI_DEV_TOKEN_SECRET",
+            "SREOI_OIDC_ISSUER",
+            "SREOI_OIDC_AUDIENCE",
+            "SREOI_OIDC_JWKS_URL",
+        )
+    }
+    os.environ["SREOI_AUTH_DEV_MODE"] = "1"
+    os.environ["SREOI_DEV_TOKEN_SECRET"] = TEST_DEV_SECRET
+    for key in ("SREOI_OIDC_ISSUER", "SREOI_OIDC_AUDIENCE", "SREOI_OIDC_JWKS_URL"):
+        os.environ.pop(key, None)
+    yield
+    for key, value in previous.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+@pytest.fixture
+def auth_headers(seeded_db: None) -> dict[str, str]:
+    """A bearer token for an ORG_ADMIN of the test organisation."""
+    from sreoi_api.auth import issue_dev_token, load_settings
+    from sreoi_persistence.models_identity import Role
+    from sreoi_pipeline.identity import bootstrap
+
+    bootstrap(
+        slug=TEST_ORG_SLUG,
+        name="Pytest organisation",
+        email=TEST_USER_EMAIL,
+        password=TEST_USER_PASSWORD,
+        role=Role.ORG_ADMIN,
+    )
+    from sqlalchemy import select
+
+    from sreoi_persistence.db import session_scope
+    from sreoi_persistence.models_identity import Organization, User
+
+    with session_scope() as db:
+        user = db.scalar(select(User).where(User.email == TEST_USER_EMAIL))
+        org = db.scalar(select(Organization).where(Organization.slug == TEST_ORG_SLUG))
+        assert user is not None and org is not None
+        token = issue_dev_token(
+            load_settings(),
+            subject=user.subject,
+            organization_id=org.id,
+            role=Role.ORG_ADMIN,
+        )
+    return {"Authorization": f"Bearer {token}"}

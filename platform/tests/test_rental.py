@@ -310,9 +310,7 @@ def rental_corpus(session: Session) -> Iterator[int]:
     """
     seed_rental_comparables(session)
     session.flush()
-    yield int(
-        session.scalar(select(func.count()).select_from(RentalComparableRow)) or 0
-    )
+    yield int(session.scalar(select(func.count()).select_from(RentalComparableRow)) or 0)
 
 
 @requires_db

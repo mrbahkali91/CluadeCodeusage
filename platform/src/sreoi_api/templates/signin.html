@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ t('auth.signin') }} — {{ t('brand') }}{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:420px;margin:6vh auto">
+  <h1>{{ t('auth.signin') }}</h1>
+  <p class="muted" style="margin:0 0 16px">{{ t('auth.subtitle') }}</p>
+
+  {% if not configured %}
+    <div class="refused">{{ t('auth.notconfigured') }}</div>
+  {% elif not dev_mode %}
+    <div class="banner">{{ t('auth.oidconly') }}{% if oidc_issuer %} <code>{{ oidc_issuer }}</code>{% endif %}</div>
+  {% else %}
+    <div class="banner">{{ t('auth.devwarning') }}</div>
+    <form id="signin" method="post" action="/auth/login">
+      <label for="email">{{ t('auth.email') }}</label>
+      <input id="email" name="email" type="email" autocomplete="username" required
+             style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+                    background:var(--panel);color:var(--ink);font:inherit;font-size:13px">
+      <label for="password" style="margin-top:12px">{{ t('auth.password') }}</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required
+             style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;
+                    background:var(--panel);color:var(--ink);font:inherit;font-size:13px">
+      <div id="err" class="refused" hidden style="margin-top:12px"></div>
+      <button type="submit" style="margin-top:16px;width:100%">{{ t('auth.signin') }}</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block body_attrs %} data-next="{{ next_path }}"{% endblock %}
+{% block head %}
+<script src="/static/signin.js" defer></script>
+{% endblock %}

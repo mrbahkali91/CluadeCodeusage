@@ -75,7 +75,7 @@
 </style>
 {% block head %}{% endblock %}
 </head>
-<body>
+<body{% block body_attrs %}{% endblock %}>
 <header>
   <div>
     <a href="/?lang={{ locale }}"><span class="brand">{{ t('brand') }}</span></a>
@@ -86,6 +86,11 @@
     <a href="/map?lang={{ locale }}" class="{{ 'on' if page=='map' }}">{{ t('nav.map') }}</a>
     <a href="/admin/sources?lang={{ locale }}" class="{{ 'on' if page=='admin' }}">{{ t('nav.admin') }}</a>
     <a href="/docs">{{ t('nav.api') }}</a>
+    {% if principal %}
+    <span class="pill" style="border-color:rgba(255,255,255,.5)"
+          title="{{ principal.role }}">{{ principal.email or principal.subject }}</span>
+    <a href="/auth/signout?lang={{ locale }}">{{ t('auth.signout') }}</a>
+    {% endif %}
     <a href="?lang={{ other_locale }}" class="pill" style="border-color:rgba(255,255,255,.5)">
       {{ 'العربية' if other_locale=='ar' else 'English' }}</a>
   </nav>

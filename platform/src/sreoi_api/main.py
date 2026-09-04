@@ -15,18 +15,12 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
 from sreoi_api import queries
-from sreoi_api.i18n import (
-    direction,
-    format_number,
-    localise_digits,
-    normalise_locale,
-    translator,
-)
+from sreoi_api.auth import Principal, current_organization, load_settings
+from sreoi_api.middleware import AuthenticationMiddleware, SecurityHeadersMiddleware
 from sreoi_api.routers import discover
 from sreoi_api.schemas import (
     OpportunityDetail,
@@ -46,7 +40,8 @@ from sreoi_api.search import (
     geojson,
     search,
 )
-from sreoi_persistence.db import get_session_factory
+from sreoi_api.ui import TEMPLATES, ui_context
+from sreoi_persistence.db import bind_tenant, get_session_factory
 from sreoi_persistence.models import (
     AgentRun,
     District,
@@ -61,7 +56,6 @@ from sreoi_pipeline.ingest import IngestionError, ingest_manual_submission
 from sreoi_sources.kapsarc import KapsarcIndexSource
 
 API_PREFIX = "/api/v1"
-TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(
@@ -76,6 +70,14 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# Order matters: Starlette runs middleware in reverse registration order, so
+# security headers are added last and authentication runs first.
+app.add_middleware(SecurityHeadersMiddleware)
+# Validate once at import so a contradictory configuration fails fast, but let
+# the middleware read the environment per request rather than freezing it.
+load_settings()
+app.add_middleware(AuthenticationMiddleware)
+
 # Feature routers are discovered, not registered by hand (see routers/__init__).
 for _feature_router in discover():
     app.include_router(_feature_router)
@@ -84,6 +86,9 @@ for _feature_router in discover():
 def get_session() -> Iterator[Session]:
     session = get_session_factory()()
     try:
+        # Bind the tenant so row-level security applies even to a query that
+        # forgets its organization filter.
+        bind_tenant(session, current_organization.get())
         yield session
         session.commit()
     except Exception:
@@ -94,6 +99,17 @@ def get_session() -> Iterator[Session]:
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_principal(request: Request) -> Principal:
+    """The authenticated caller. The middleware has already refused anyone else."""
+    principal: Principal | None = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "no credentials supplied")
+    return principal
+
+
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 
 def _load(session: Session, opportunity_id: uuid.UUID) -> Opportunity:
@@ -424,17 +440,7 @@ def admin_health_run(session: SessionDep) -> dict[str, Any]:
 # ---------------------------------------------------------------- UI
 
 
-def _ui_context(request: Request) -> dict[str, Any]:
-    locale = normalise_locale(request.query_params.get("lang"))
-    return {
-        "locale": locale,
-        "dir": direction(locale),
-        "t": translator(locale),
-        "num": lambda v, d=0: format_number(v, locale, d),
-        "digits": lambda s: localise_digits(str(s), locale),
-        "other_locale": "en" if locale == "ar" else "ar",
-        "query": request.query_params,
-    }
+_ui_context = ui_context
 
 
 @app.get("/", response_class=HTMLResponse)

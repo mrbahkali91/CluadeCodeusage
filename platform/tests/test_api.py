@@ -13,10 +13,10 @@ pytestmark = requires_db
 
 
 @pytest.fixture
-def client(seeded_db: None) -> Iterator[TestClient]:
+def client(seeded_db: None, auth_headers: dict[str, str]) -> Iterator[TestClient]:
     from sreoi_api.main import app
 
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=auth_headers) as test_client:
         yield test_client
 
 

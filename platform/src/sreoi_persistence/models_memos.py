@@ -34,6 +34,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -56,6 +57,18 @@ class InvestmentMemoRow(Base):
     """One memo, in one locale, for one moment of the evidence."""
 
     __tablename__ = "investment_memos"
+    # Tenant key. Application filters AND row-level security both use it;
+    # the RLS policy is the backstop for a query that forgets the filter.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+        # Server default = the bootstrap organisation, so write paths that
+        # predate tenancy keep working and the column is never null. A
+        # multi-tenant caller MUST pass this explicitly; row-level security
+        # rejects a row whose tenant does not match the bound one.
+        server_default=text("'00000000-0000-0000-0000-000000000001'"),
+    )
     __table_args__ = (
         Index("ix_investment_memos_lookup", "opportunity_id", "locale", "generated_at"),
         CheckConstraint(
