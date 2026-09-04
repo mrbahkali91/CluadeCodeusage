@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from sreoi_domain.rental import (
@@ -301,12 +301,18 @@ SIDRAH_ASSIGNMENT: dict[str, Any] = {
 
 @pytest.fixture
 def rental_corpus(session: Session) -> Iterator[int]:
-    """Seed the synthetic rental corpus inside the test's own transaction.
+    """Ensure a synthetic rental corpus exists and report how many leases there are.
 
-    Nothing is committed, so the corpus disappears with the rollback and does
-    not perturb the score fixtures other modules rely on.
+    `seed_all` now seeds this corpus, so `seed_rental_comparables` is a no-op on
+    an already-seeded database. The fixture therefore yields the number of
+    leases *present*, not the number this call inserted -- otherwise the test
+    would pass or fail depending on whether it ran before or after seeding.
     """
-    yield seed_rental_comparables(session)
+    seed_rental_comparables(session)
+    session.flush()
+    yield int(
+        session.scalar(select(func.count()).select_from(RentalComparableRow)) or 0
+    )
 
 
 @requires_db
@@ -435,7 +441,16 @@ def test_unknown_installments_refuse_the_yield_as_well_as_the_discount(
 def test_no_lease_evidence_leaves_the_rental_dimension_unestablished(
     isolated: None, session: Session
 ) -> None:
-    """Without a rental corpus nothing is invented and nothing is stored."""
+    """Without a rental corpus nothing is invented and nothing is stored.
+
+    `isolated` truncates the property graph but deliberately preserves
+    reference data, and reference seeding now includes leases -- so this test
+    has to remove that evidence itself. The delete is confined to this
+    session's transaction and disappears on rollback.
+    """
+    session.execute(delete(RentalComparableRow))
+    session.flush()
+
     opportunity, result = ingest_manual_submission(
         session, {**SIDRAH_ASSIGNMENT, "external_id": "rental-none", "title": "Assignment none"}
     )
