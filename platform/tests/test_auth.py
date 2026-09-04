@@ -537,3 +537,27 @@ def test_the_signed_in_page_names_the_principal(client: TestClient) -> None:
     assert page.status_code == 200
     assert "acme@example.com" in page.text
     assert "/auth/signout" in page.text
+
+
+@requires_db
+def test_the_csp_permits_maplibre_but_not_third_party_script(client: TestClient) -> None:
+    """A regression test for a real outage.
+
+    The first hardened CSP omitted `worker-src`, so it fell back to
+    `script-src` -- which forbids `blob:`. MapLibre builds its renderer worker
+    from a blob URL, so the worker was refused, the map never initialised, and
+    the page served an empty canvas with nothing visible to the user. Only the
+    browser console said anything.
+    """
+    csp = client.get("/health").headers["Content-Security-Policy"]
+    directives = {
+        part.strip().split(" ")[0]: part.strip() for part in csp.split(";") if part.strip()
+    }
+    # The worker MapLibre needs.
+    assert "blob:" in directives["worker-src"]
+    # But blob: must not become a general script source.
+    assert "blob:" not in directives["script-src"]
+    # And no third-party origin is permitted anywhere: assets are vendored.
+    for value in directives.values():
+        assert "http://" not in value and "https://" not in value, value
+    assert directives["frame-ancestors"] == "frame-ancestors 'none'"

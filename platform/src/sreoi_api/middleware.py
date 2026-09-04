@@ -155,8 +155,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "Content-Security-Policy",
             # Vendored assets only; no third-party origins, matching the
             # decision to self-host MapLibre rather than use a CDN.
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+            #
+            # worker-src is stated explicitly and must stay. MapLibre creates
+            # its renderer worker from a blob: URL, and with worker-src absent
+            # the browser falls back to script-src -- which forbids blob:, so
+            # the worker is refused, the map never initialises, and the page
+            # renders an empty canvas with no error visible to the user. The
+            # blob: allowance is scoped to workers alone; script-src still
+            # refuses blob:, so this does not open a script-injection path.
+            "default-src 'self'; img-src 'self' data: blob:; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            "worker-src 'self' blob:; child-src 'self' blob:; "
+            "connect-src 'self'; frame-ancestors 'none'",
         )
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
