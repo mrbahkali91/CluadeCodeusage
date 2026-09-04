@@ -90,6 +90,17 @@ def seeded_db() -> Iterator[None]:
 # Mutable tables, in dependency order. Reference data (districts, sources,
 # transactions, price index) is deliberately preserved.
 _MUTABLE_TABLES = (
+    "notifications",
+    "alerts",
+    "watch_rules",
+    "watchlists",
+    "investment_memos",
+    "document_extractions",
+    "documents",
+    "backtest_results",
+    "backtest_runs",
+    "quality_snapshots",
+    "rental_estimates",
     "property_timeline",
     "listing_snapshots",
     "listings",
