@@ -64,8 +64,26 @@ def _database_available() -> bool:
     return _ensure_test_database()
 
 
+_DB_AVAILABLE = _database_available()
+
+# Most of this suite -- including every tenant-isolation test, which is the
+# only place the row-level security policies are exercised -- needs PostGIS.
+# Skipping is the right default on a machine with no database, but a *silent*
+# skip is dangerous: it turns "the security control is broken" into a green
+# run. Set SREOI_REQUIRE_DB=1 (as `make check` does) to make the absence a
+# hard failure instead.
+_REQUIRE_DB = os.environ.get("SREOI_REQUIRE_DB", "").strip() == "1"
+
+if _REQUIRE_DB and not _DB_AVAILABLE:
+    raise RuntimeError(
+        f"SREOI_REQUIRE_DB=1 but the test database is unreachable: {TEST_DB_URL}\n"
+        "Run `make deploy` (native) or `docker compose up -d db` to provision it. "
+        "Note that PostGIS must be installed by a superuser -- the application "
+        "role cannot create the extension itself."
+    )
+
 requires_db = pytest.mark.skipif(
-    not _database_available(), reason="PostgreSQL with PostGIS is not available"
+    not _DB_AVAILABLE, reason=f"PostgreSQL with PostGIS is not available at {TEST_DB_URL}"
 )
 
 

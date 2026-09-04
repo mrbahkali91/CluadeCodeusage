@@ -24,8 +24,58 @@ deterministic opportunity score to an evidence-backed detail page. Slice 2 adds 
 resolution across sources, append-only price history, filtered search, a PostGIS map, source
 health monitoring and full Arabic/RTL.
 
-**150 tests (order-independent), `mypy --strict` clean over 52 files, reversible migrations,
-enforced architecture boundaries.** Start at **[SLICE-1.md](SLICE-1.md)**, then **[SLICE-2.md](SLICE-2.md)**.
+Slice 4 adds the agent runtime, prompt-injection defences and verification. The auth slice
+adds authentication, RBAC and PostgreSQL-enforced tenant isolation.
+
+**512 tests (order-independent), `mypy --strict` clean over 96 files, reversible migrations,
+enforced architecture boundaries.** Start at **[SLICE-1.md](SLICE-1.md)**, then
+**[SLICE-2.md](SLICE-2.md)**, **[SLICE-4.md](SLICE-4.md)** and **[SLICE-AUTH.md](SLICE-AUTH.md)**.
+
+## Running it on a laptop
+
+Docker Desktop is the only prerequisite. Nothing is degraded relative to a real
+deployment: the database is the official PostGIS image, so the map, the spatial
+queries and row-level security behave exactly as they do anywhere else.
+
+```bash
+git clone -b claude/saudi-realestate-opportunity-platform-n0bn70 <repo-url>
+cd CluadeCodeusage/platform
+make up
+```
+
+That builds the image, starts PostGIS, migrates, seeds the reference data and the
+demonstration corpus, creates an organisation and a first user, and serves on
+<http://127.0.0.1:8000>. Sign in at `/auth/signin` as `admin@localhost`; the password is
+printed once in `make logs`, or set `ADMIN_PASSWORD` to choose it. `make down` stops the
+stack and `make down CLEAN=1` also deletes the database volume.
+
+Both ports bind to `127.0.0.1`, not `0.0.0.0`, so neither the app nor the database is
+reachable from your network.
+
+To develop with your own Python instead of in the container:
+
+```bash
+make db-only          # PostGIS in Docker, nothing else
+make install          # uv venv + editable install
+make deploy           # migrate, seed, bootstrap identity, serve with reload
+```
+
+There is also a fully native path — `make deploy` alone, no Docker — which needs
+PostgreSQL 16 with PostGIS 3.4 and `pg_trgm` installed locally. It is what this project was
+actually developed against.
+
+Two things to know before you run the tests:
+
+- `make check` is the full gate: lint, `mypy --strict`, the architecture contracts, and the
+  suite with `SREOI_REQUIRE_DB=1`. That flag turns a missing test database into a hard
+  failure. Use it. Plain `make test` *skips* the 209 database-backed tests when PostGIS is
+  unreachable — including every tenant-isolation test — and a green run with the security
+  tests silently skipped is the most dangerous output this repo can produce.
+- The application database role is deliberately **not** a superuser. PostgreSQL exempts
+  superusers from row-level security unconditionally, so a superuser app role would leave
+  all sixteen tenant policies in place and enforced against nobody. Both the Docker init
+  script and `deploy-local.sh` create it `NOSUPERUSER NOBYPASSRLS` and have a superuser
+  install the extensions. If you provision the database by hand, do the same.
 
 ## Read in this order
 

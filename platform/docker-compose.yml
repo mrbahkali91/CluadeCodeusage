@@ -1,30 +1,70 @@
-# Local development stack.
+# The whole platform on a laptop: `docker compose up -d`.
 #
-# NOTE: this file was written but NOT executed during Slice 1 — the build
-# environment had no Docker daemon, so PostGIS was installed natively instead.
-# Treat it as unverified until someone runs it.
+# Nothing is degraded relative to a production deployment -- the database is
+# the real PostGIS image, so the map, the spatial queries and PostgreSQL
+# row-level security all behave exactly as they do anywhere else. See
+# README.md > Running it on a laptop.
+#
+# STATUS: written and reviewed, but the build environment this was authored in
+# had no Docker daemon, so `docker compose up` has NOT been executed. The
+# database initialisation SQL in docker/initdb/ *was* executed against a real
+# PostgreSQL 16 + PostGIS 3.4 cluster and verified (role attributes, database
+# ownership, extensions, idempotent re-run). Treat the orchestration itself as
+# unverified until someone runs it.
+
+name: sreoi
+
 services:
   db:
     image: postgis/postgis:16-3.4
     environment:
-      POSTGRES_USER: sreoi
-      POSTGRES_PASSWORD: sreoi
-      POSTGRES_DB: sreoi
-    ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+      # Deliberately `postgres`, not `sreoi`. POSTGRES_USER becomes the cluster
+      # superuser, and a superuser application role would silently defeat every
+      # row-level security policy: PostgreSQL exempts superusers from RLS
+      # unconditionally. The init script creates `sreoi` NOSUPERUSER instead.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      SREOI_DB_ROLE: sreoi
+      SREOI_DB_PASSWORD: ${SREOI_DB_PASSWORD:-sreoi}
+      SREOI_DB_NAME: sreoi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty volume. Creates the non-superuser app role, both
+      # databases (application and test) and their extensions.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Bound to loopback so the database is not reachable from the network.
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sreoi"]
-      interval: 5s
-      retries: 10
+      # Checks the application database specifically, not just the postmaster:
+      # `pg_isready` on the maintenance database reports healthy before the
+      # init script has finished creating anything.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sreoi"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
 
-  api:
-    build: .
-    command: uvicorn sreoi_api.main:app --host 0.0.0.0 --port 8000
+  app:
+    build:
+      context: .
     environment:
-      SREOI_DATABASE_URL: postgresql+psycopg://sreoi:sreoi@db:5432/sreoi
-    ports: ["8000:8000"]
+      SREOI_DATABASE_URL: postgresql+psycopg://sreoi:${SREOI_DB_PASSWORD:-sreoi}@db:5432/sreoi
+      # The development password issuer. Local use only; the application
+      # refuses to start if this is set alongside a configured OIDC issuer.
+      SREOI_AUTH_DEV_MODE: "1"
+      SREOI_DEV_TOKEN_SECRET: ${SREOI_DEV_TOKEN_SECRET:-change-me-a-local-development-secret-32b+}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      LOG_LEVEL: ${LOG_LEVEL:-2}
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
-      db: {condition: service_healthy}
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

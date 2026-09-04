@@ -40,8 +40,10 @@ pg_isready -h 127.0.0.1 -p 5432 || { echo "PostgreSQL is not reachable"; exit 1;
 su postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='sreoi'\"" 2>/dev/null | grep -q 1 \
   || su postgres -c "psql -qc \"CREATE ROLE sreoi LOGIN PASSWORD 'sreoi' NOSUPERUSER NOBYPASSRLS\""
 su postgres -c "psql -qc \"ALTER ROLE sreoi NOSUPERUSER NOBYPASSRLS\""
-su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'\"" 2>/dev/null | grep -q 1 \
-  || su postgres -c "createdb -O sreoi ${DB_NAME}"
+for db in "${DB_NAME}" "${DB_NAME}_test"; do
+  su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${db}'\"" 2>/dev/null | grep -q 1 \
+    || su postgres -c "createdb -O sreoi ${db}"
+done
 
 if [ "${RESET:-0}" = "1" ]; then
   say "Resetting schema (RESET=1)"
@@ -51,12 +53,19 @@ fi
 
 # CREATE EXTENSION requires superuser, which the app role no longer has, so a
 # superuser installs them once and hands the schema back.
+# The test database is provisioned here, not by the test suite. CREATE
+# EXTENSION postgis needs superuser, which the app role does not have, and the
+# suite skips rather than fails when it cannot reach a PostGIS database -- so
+# without this, `make test` on a fresh machine would report a green run with
+# every database-backed test, tenant isolation included, silently skipped.
 say "Extensions (PostGIS, pg_trgm)"
-su postgres -c "psql -d ${DB_NAME} -q \
-  -c 'CREATE EXTENSION IF NOT EXISTS postgis' \
-  -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
-  -c 'ALTER SCHEMA public OWNER TO sreoi' \
-  -c 'GRANT ALL ON SCHEMA public TO sreoi'"
+for db in "${DB_NAME}" "${DB_NAME}_test"; do
+  su postgres -c "psql -d ${db} -q \
+    -c 'CREATE EXTENSION IF NOT EXISTS postgis' \
+    -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
+    -c 'ALTER SCHEMA public OWNER TO sreoi' \
+    -c 'GRANT ALL ON SCHEMA public TO sreoi'"
+done
 
 say "Migrations"
 .venv/bin/alembic upgrade head

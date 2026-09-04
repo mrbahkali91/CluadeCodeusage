@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 export SREOI_DATABASE_URL ?= postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi
 
-.PHONY: help install db-up deploy migrate migrate-down seed demo run test lint format typecheck contracts check clean
+.PHONY: help install up down logs db-only db-up deploy migrate migrate-down seed demo run test lint format typecheck contracts check clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -12,6 +12,25 @@ help:
 install:  ## Create the venv and install the project with dev extras
 	uv venv .venv --python 3.11
 	uv pip install --python .venv/bin/python -e ".[dev]"
+
+up:  ## Docker: build and run the whole stack (http://127.0.0.1:8000)
+	docker compose up -d --build
+	@echo "Waiting for the app to become healthy..."
+	@for i in $$(seq 1 90); do \
+	  curl -sf -o /dev/null http://127.0.0.1:8000/health && \
+	    { echo "Ready: http://127.0.0.1:8000/auth/signin"; exit 0; }; \
+	  sleep 2; \
+	done; echo "Not healthy yet -- check: make logs"; exit 1
+
+down:  ## Docker: stop the stack (add CLEAN=1 to delete the database volume)
+	docker compose down $(if $(CLEAN),--volumes,)
+
+logs:  ## Docker: follow the stack logs
+	docker compose logs -f
+
+db-only:  ## Docker: run just PostGIS, then develop with the local venv
+	docker compose up -d db
+	@echo "SREOI_DATABASE_URL=postgresql+psycopg://sreoi:sreoi@127.0.0.1:5432/sreoi"
 
 db-up:  ## Start the local PostgreSQL cluster (native install)
 	pg_ctlcluster 16 main start || true
@@ -57,7 +76,8 @@ typecheck:  ## mypy strict
 contracts:  ## Enforce the architecture boundaries (ADR-001)
 	.venv/bin/lint-imports
 
-check: lint typecheck contracts test  ## Everything CI runs
+check: lint typecheck contracts  ## Everything CI runs (a missing test DB fails, never skips)
+	SREOI_REQUIRE_DB=1 $(PY) -m pytest -q
 
 clean:
 	rm -rf .venv .pytest_cache .mypy_cache .ruff_cache
