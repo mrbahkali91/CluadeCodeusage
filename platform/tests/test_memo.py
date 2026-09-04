@@ -10,6 +10,7 @@ without ever being stored or displayed.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Callable, Iterator
 from decimal import Decimal
@@ -102,6 +103,14 @@ def _tampering(mutate: Callable[[dict[str, Any]], None], *, only_first: bool = F
 
     responder.calls = calls  # type: ignore[attr-defined]
     return responder
+
+
+class _Prompt:
+    """The minimum an offline responder reads: the user prompt and no untrusted text."""
+
+    def __init__(self, user: str) -> None:
+        self.user = user
+        self.untrusted_blocks: tuple[str, ...] = ()
 
 
 def _section(memo: dict[str, Any], key: str) -> dict[str, Any]:
@@ -299,30 +308,62 @@ def test_memo_says_the_comparable_evidence_is_synthetic(isolated: None, session:
 
 
 @requires_db
-def test_memo_refuses_to_quote_a_rental_return(isolated: None, session: Session) -> None:
-    """No rental data exists, so the returns section must say so, not estimate."""
+def test_memo_reports_the_computed_rental_yield_and_nothing_more(
+    isolated: None, session: Session
+) -> None:
+    """Once a yield exists the memo must state it -- and only it.
+
+    This test replaced one that asserted the memo said "no rental yield is
+    available". That assertion was true when written and became false the
+    moment the rental engine landed. A memo that denies data the platform holds
+    is as wrong as one that invents data it does not.
+    """
     opportunity, _ = ingest_manual_submission(session, GATED)
     session.flush()
+    inputs = load_memo_inputs(session, opportunity)
+    assert inputs.rental is not None, "the rental engine is expected to have run"
+    assert inputs.rental.gross_yield is not None
+
     record = generate_memo(session, opportunity=opportunity, context=_context(session))
-    assert record.memo is not None
+    assert record.memo is not None and record.facts is not None
     returns = next(s for s in record.memo.sections if s.key == "expected_returns")
+    cited = {f.field_ref: f.value for f in returns.figures}
+
+    assert "rental.gross_yield_pct" in cited
+    assert abs(cited["rental.gross_yield_pct"] - float(inputs.rental.gross_yield) * 100.0) < 0.01
+    assert abs(cited["rental.annual_rent"] - float(inputs.rental.annual_rent)) < 0.01
+
     text = " ".join(returns.body).lower()
-    assert "no rental yield is available" in text
+    # An estimate is named as an estimate, and the limits are still stated.
+    assert "estimate from" in text
+    assert "not a contracted rent" in text
     assert "irr" in text
 
 
 @requires_db
-def test_regenerating_the_same_memo_does_not_pay_twice(isolated: None, session: Session) -> None:
-    """Idempotency matters most on the expensive stage."""
+def test_memo_says_so_plainly_when_no_rental_estimate_exists(
+    isolated: None, session: Session
+) -> None:
+    """The other branch: absence stated as absence, with no number attached."""
     opportunity, _ = ingest_manual_submission(session, GATED)
     session.flush()
-    first = generate_memo(session, opportunity=opportunity, context=_context(session))
-    second = generate_memo(session, opportunity=opportunity, context=_context(session))
-    assert first.generated and second.generated
-    runs = session.scalars(
-        select(AgentRun).where(AgentRun.agent == "investment_memo", AgentRun.status == "SUCCEEDED")
-    ).all()
-    assert len(runs) == 1
+    inputs = dataclasses.replace(load_memo_inputs(session, opportunity), rental=None)
+    facts = build_memo_facts(inputs)
+    memo = json.loads(
+        deterministic_memo_responder(
+            _Prompt(
+                f"Locale: en\n\n```json\n{json.dumps(facts.payload(), ensure_ascii=False)}\n```"
+            )
+        )
+    )
+    returns = _section(memo, "expected_returns")
+    text = " ".join(returns["body"]).lower()
+    assert "no rental estimate has been computed" in text
+    assert "unevidenced" in text
+    assert not any(f["field_ref"].startswith("rental.") for f in returns["figures"])
+
+    # And the fact table carries no rental figure the prose could have used.
+    assert not [key for key in facts.numeric if key.startswith("rental.")]
 
 
 # --------------------------------------------------------------------------

@@ -374,9 +374,10 @@ _VAGUE_TERMS: tuple[VagueTerm, ...] = (
         meaning=f"min_gross_yield >= {GOOD_YIELD_PCT:.0f}% (district median)",
         enforceable=False,
         reason=(
-            "no rental data is ingested and gross yield is not computed for any "
-            "property, so this criterion cannot be applied -- it is shown here "
-            "rather than silently dropped"
+            "gross yield is computed and stored per opportunity, but "
+            "OpportunityFilters exposes no yield filter, so the deterministic "
+            "search cannot apply it yet; it is shown here rather than silently "
+            "dropped"
         ),
     ),
     VagueTerm(

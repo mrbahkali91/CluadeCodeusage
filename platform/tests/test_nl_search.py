@@ -336,6 +336,9 @@ def test_corpus_covers_both_languages() -> None:
 def test_vague_terms_are_made_explicit() -> None:
     intent = compile_intent(CORPUS[0][1], VOCAB)
     assert intent.interpreted["good rental demand"].startswith("min_gross_yield >= 6%")
+    # The yield exists; the filter does not. Both facts are stated.
+    rental = next(u for u in intent.not_enforced if u.term == "good rental demand")
+    assert "no yield filter" in rental.reason
     assert intent.interpreted["no major legal complexity"] == "legal_risk <= LOW"
 
 

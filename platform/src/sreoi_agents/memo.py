@@ -66,6 +66,7 @@ from sreoi_persistence.models import (
     VerificationCheck,
 )
 from sreoi_persistence.models_memos import InvestmentMemoRow
+from sreoi_persistence.models_rental import RentalEstimateRow
 from sreoi_sources.redaction import normalize_digits
 
 MEMO_METHOD_VERSION = "memo-v1"
@@ -163,6 +164,10 @@ class MemoInputs:
     valuation: Valuation | None
     cost: TrueAcquisitionCostRow | None
     comparables: tuple[ValuationComparable, ...]
+    # Track A's rental engine. Read through the persistence layer, which is the
+    # sanctioned seam; the memo must reflect a yield once one exists, because a
+    # memo that says "no rental data" when there is some is a false memo.
+    rental: RentalEstimateRow | None
     checks: tuple[VerificationCheck, ...]
     snapshots: tuple[ListingSnapshot, ...]
     synthetic_evidence: bool
@@ -233,6 +238,12 @@ def load_memo_inputs(session: Session, opportunity: Opportunity) -> MemoInputs:
         .limit(1)
         .options(selectinload(TrueAcquisitionCostRow.line_items))
     )
+    rental = session.scalar(
+        select(RentalEstimateRow)
+        .where(RentalEstimateRow.opportunity_id == opportunity.id)
+        .order_by(RentalEstimateRow.computed_at.desc())
+        .limit(1)
+    )
     checks = tuple(
         session.scalars(
             select(VerificationCheck)
@@ -287,6 +298,7 @@ def load_memo_inputs(session: Session, opportunity: Opportunity) -> MemoInputs:
         valuation=valuation,
         cost=cost,
         comparables=comparables,
+        rental=rental,
         checks=checks,
         snapshots=snapshots,
         synthetic_evidence=synthetic,
@@ -505,6 +517,26 @@ def build_memo_facts(
         if item.amount is not None:
             numeric[f"cost.line_items.{item.kind}"] = float(item.amount)
 
+    rental = inputs.rental
+    if rental is not None:
+        numeric.update(
+            {
+                "rental.annual_rent": float(rental.annual_rent),
+                "rental.annual_rent_low": float(rental.annual_rent_low),
+                "rental.annual_rent_high": float(rental.annual_rent_high),
+                "rental.rent_per_sqm_year": float(rental.rent_per_sqm_year),
+                "rental.comparable_count": float(rental.comparable_count),
+                "rental.effective_n": float(rental.effective_n),
+                "rental.confidence": float(rental.confidence),
+            }
+        )
+        if rental.gross_yield is not None:
+            numeric["rental.gross_yield_pct"] = float(rental.gross_yield) * 100.0
+        if rental.net_yield is not None:
+            numeric["rental.net_yield_pct"] = float(rental.net_yield) * 100.0
+        if rental.opex_total is not None:
+            numeric["rental.opex_total"] = float(rental.opex_total)
+
     numeric.update(_verification_facts(inputs.checks))
     numeric.update(_listing_facts(inputs.snapshots))
 
@@ -539,6 +571,15 @@ def build_memo_facts(
             "yes" if numeric["verification.official_applicable"] > 0 else "no"
         ),
         "derived.cost_vs_max_price": "below" if cost_total <= ceiling else "above",
+        "rental.available": "yes" if inputs.rental is not None else "no",
+        "rental.yield_available": (
+            "yes" if inputs.rental is not None and inputs.rental.gross_yield is not None else "no"
+        ),
+        # Free text from the rental engine. Quoted into the memo only when it
+        # carries no numeral of its own -- see `_quotable`.
+        "rental.yield_refused_reason": (
+            (inputs.rental.yield_refused_reason or "") if inputs.rental is not None else ""
+        ),
         "policy.decision": decision,
         "policy.decision_basis": basis,
         "versions.scoring": score.method_version,
@@ -573,6 +614,20 @@ def _renderings(value: float) -> set[str]:
 def numerals(text: str) -> list[str]:
     """Numerals in a string, with Eastern Arabic digits normalised first."""
     return _NUMERAL.findall(normalize_digits(text))
+
+
+def _quotable(text: str) -> str | None:
+    """Free text is safe to quote into a memo only if it states no number.
+
+    Reasons written elsewhere in the platform are prose we do not control. A
+    numeral inside one cannot be resolved to a computed field, so quoting it
+    would (correctly) fail validation; we quote only the digit-free ones and
+    fall back to a pointer otherwise.
+    """
+    cleaned = text.strip()
+    if not cleaned or numerals(cleaned):
+        return None
+    return cleaned
 
 
 def _allowed_numerals(facts: dict[str, float]) -> set[str]:
@@ -764,7 +819,8 @@ _QUESTIONS: dict[str, tuple[str, ...]] = {
         "Are there liens, unpaid service charges, or occupancy claims attached to the title?",
         "Does the title deed match the unit inspected, including area, floor and unit number?",
         "What rent is actually achieved in this building today, and on what evidence? "
-        "The platform has no rental data and cannot answer this.",
+        "Any rent quoted above is an estimate from comparable leases, not a "
+        "contract on this unit.",
         "If this is an auction lot: what are the deposit, commission and settlement terms, "
         "and are all of them already inside the cost breakdown above?",
     ),
@@ -775,7 +831,7 @@ _QUESTIONS: dict[str, tuple[str, ...]] = {
         "هل توجد رهون أو رسوم خدمات غير مسددة أو مطالبات إشغال على الصك؟",
         "هل يطابق الصك الوحدة المعروضة، من حيث المساحة والدور ورقم الوحدة؟",
         "ما الإيجار المتحقق فعلياً في هذا المبنى اليوم، وبأي دليل؟ "
-        "لا تملك المنصة بيانات إيجارية ولا تستطيع الإجابة.",
+        "وأي إيجار مذكور أعلاه تقدير من عقود مقارنة لا عقد على هذه الوحدة.",
         "إذا كان الأصل معروضاً في مزاد: ما شروط العربون والعمولة والسداد، "
         "وهل جميعها مدرجة في تفصيل التكلفة أعلاه؟",
     ),
@@ -1025,37 +1081,101 @@ def deterministic_memo_responder(request: Any) -> str:
         fig("Value uplift to base estimate", "derived.value_uplift_to_base"),
         fig("Rental dimension score", "score.components.RENTAL.normalized_score"),
         fig("Rental dimension weight", "score.components.RENTAL.weight"),
+        fig("Rental dimension contribution", "score.components.RENTAL.contribution"),
     ]
-    direction_en = "below" if facts["cost.total"] <= facts["valuation.fair_value_base"] else "above"
+    cost_side = "below" if facts["cost.total"] <= facts["valuation.fair_value_base"] else "above"
+    cost_side_ar = "دون" if cost_side == "below" else "فوق"
     if locale == "en":
         ret_body = [
             f"Buying at {money('cost.total')} SAR against a base estimate of "
             f"{money('valuation.fair_value_base')} SAR is a gap of "
             f"{money('derived.value_uplift_to_base')} SAR, with the cost "
-            f"{direction_en} the estimate. That gap is a valuation difference, not a "
-            "realised gain: it is only recoverable on a sale at the estimate.",
-            "No rental yield is available for this property. The rental engine is not "
-            f"built, so the rental dimension contributes "
-            f"{two('score.components.RENTAL.contribution')} of its "
-            f"{two('score.components.RENTAL.weight')} weight. Any income return quoted "
-            "for this property, by anyone, would be an invention.",
-            "There is no modelled exit price, holding period or IRR here, because the "
-            "platform computes none of those.",
+            f"{cost_side} the estimate. That gap is a valuation difference, not a "
+            "realised gain: it is only recoverable on a sale at the estimate."
         ]
     else:
         ret_body = [
             f"الشراء بـ {money('cost.total')} ريال مقابل تقدير أساسي "
             f"{money('valuation.fair_value_base')} ريال يعني فرقاً قدره "
-            f"{money('derived.value_uplift_to_base')} ريال. وهذا الفرق فرق تقييم لا ربح "
-            "محقق، ولا يتحقق إلا ببيع عند التقدير.",
-            f"لا يتوفر عائد إيجاري لهذا العقار. محرك الإيجارات غير مبني، ولذلك يسهم بُعد "
-            f"الإيجار بـ {two('score.components.RENTAL.contribution')} من وزنه "
-            f"{two('score.components.RENTAL.weight')}. وأي عائد إيجاري يُنسب إلى هذا "
-            "العقار من أي جهة هو اختراع.",
-            "لا يوجد سعر خروج مقدّر ولا مدة احتفاظ ولا معدل عائد داخلي، لأن المنصة لا "
-            "تحسب أياً منها.",
+            f"{money('derived.value_uplift_to_base')} ريال، فالتكلفة "
+            f"{cost_side_ar} التقدير. وهذا الفرق فرق تقييم لا ربح محقق، ولا يتحقق إلا "
+            "ببيع عند التقدير."
         ]
-    ret_figures.append(fig("Rental dimension contribution", "score.components.RENTAL.contribution"))
+
+    # The income half of the return. Three genuinely different states, and the
+    # memo must not describe one as another.
+    if "rental.gross_yield_pct" in facts:
+        ret_figures += [
+            fig("Estimated annual rent", "rental.annual_rent"),
+            fig("Gross yield (%)", "rental.gross_yield_pct"),
+            fig("Rental estimate confidence", "rental.confidence"),
+            fig("Lease comparables used", "rental.comparable_count"),
+        ]
+        net_en = ""
+        net_ar = ""
+        if "rental.net_yield_pct" in facts:
+            ret_figures.append(fig("Net yield (%)", "rental.net_yield_pct"))
+            net_en = f" and a net yield of {pct('rental.net_yield_pct')}%"
+            net_ar = f" وعائد صافي {pct('rental.net_yield_pct')}٪"
+        if locale == "en":
+            ret_body.append(
+                f"Estimated annual rent {money('rental.annual_rent')} SAR, within a range "
+                f"of {money('rental.annual_rent_low')} to "
+                f"{money('rental.annual_rent_high')} SAR, giving a gross yield of "
+                f"{pct('rental.gross_yield_pct')}%{net_en} on the true acquisition cost."
+            )
+            ret_body.append(
+                f"That rent is an estimate from {count('rental.comparable_count')} lease "
+                f"comparables at confidence {two('rental.confidence')}. It is not a "
+                "contracted rent on this unit, and it is not a guarantee of occupancy."
+            )
+        else:
+            ret_body.append(
+                f"الإيجار السنوي المقدّر {money('rental.annual_rent')} ريال، داخل نطاق من "
+                f"{money('rental.annual_rent_low')} إلى "
+                f"{money('rental.annual_rent_high')} ريال، بعائد إجمالي "
+                f"{pct('rental.gross_yield_pct')}٪{net_ar} على التكلفة الفعلية للاستحواذ."
+            )
+            ret_body.append(
+                f"وهذا الإيجار تقدير من {count('rental.comparable_count')} عقود إيجار "
+                f"مقارنة بثقة {two('rental.confidence')}. وهو ليس إيجاراً متعاقداً على "
+                "هذه الوحدة ولا ضماناً للإشغال."
+            )
+    elif text_facts["rental.available"] == "yes":
+        reason = _quotable(text_facts.get("rental.yield_refused_reason", ""))
+        if locale == "en":
+            sentence = (
+                "A rental estimate exists for this property but the yield was refused, so "
+                "no income return is stated here."
+            )
+            ret_body.append(f"{sentence} Reason: {reason}." if reason else sentence)
+        else:
+            sentence = (
+                "يوجد تقدير إيجاري لهذا العقار لكن العائد مرفوض، ولذلك لا يُذكر أي عائد دخل هنا."
+            )
+            ret_body.append(f"{sentence} السبب: {reason}." if reason else sentence)
+    elif locale == "en":
+        ret_body.append(
+            "No rental estimate has been computed for this property, so the rental "
+            f"dimension contributes {two('score.components.RENTAL.contribution')} of its "
+            f"{two('score.components.RENTAL.weight')} weight. Any income return quoted "
+            "for this property, by anyone, would be unevidenced."
+        )
+    else:
+        ret_body.append(
+            f"لم يُحسب أي تقدير إيجاري لهذا العقار، ولذلك يسهم بُعد الإيجار بـ "
+            f"{two('score.components.RENTAL.contribution')} من وزنه "
+            f"{two('score.components.RENTAL.weight')}. وأي عائد إيجاري يُنسب إلى هذا "
+            "العقار من أي جهة هو بلا دليل."
+        )
+
+    ret_body.append(
+        "There is no modelled exit price, holding period or IRR here, because the "
+        "platform computes none of those."
+        if locale == "en"
+        else "لا يوجد سعر خروج مقدّر ولا مدة احتفاظ ولا معدل عائد داخلي، لأن المنصة لا "
+        "تحسب أياً منها."
+    )
     sections.append(
         MemoSection(
             key="expected_returns",
