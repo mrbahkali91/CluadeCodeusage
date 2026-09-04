@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% set page = 'list' %}
+{% block title %}{{ t('memo.title') }} — {{ opportunity.title }}{% endblock %}
+{% block content %}
+
+<p class="muted"><a href="/opportunities/{{ opportunity.id }}?lang={{ locale }}">&larr; {{ t('memo.back') }}</a></p>
+<h1>{{ t('memo.title') }}</h1>
+<p class="muted">{{ t('memo.subtitle') }}</p>
+
+<div class="banner">{{ t('memo.disclosure') }}</div>
+
+{% if not memo %}
+<div class="panel">
+  <h2>{{ t('memo.gate') }}</h2>
+  <div class="refused">
+    <strong>{% if last_status == 'REJECTED' %}{{ t('memo.rejected') }}{% else %}{{ t('memo.none') }}{% endif %}</strong>
+    <div style="margin-top:6px">{{ last_reason or gate.reason }}</div>
+  </div>
+  <div class="grid" style="margin-top:14px">
+    <div class="stat">
+      <div class="k">{{ t('field.score') }}</div>
+      <div class="v">{{ num(gate.score_total, 1) if gate.score_total is not none else '—' }}</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('field.confidence') }}</div>
+      <div class="v">{{ num(gate.data_confidence * 100, 0) ~ '%' if gate.data_confidence is not none else '—' }}</div>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<div class="panel">
+  <div class="grid">
+    <div class="stat">
+      <div class="k">{{ t('memo.decision') }}</div>
+      <div class="v">
+        {% if memo.decision == 'PROCEED_TO_DILIGENCE' %}<span class="pill good">{{ t('decision.' ~ memo.decision) }}</span>
+        {% elif memo.decision == 'INVESTIGATE' %}<span class="pill warn">{{ t('decision.' ~ memo.decision) }}</span>
+        {% else %}<span class="pill bad">{{ t('decision.' ~ memo.decision) }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('memo.max_price') }}</div>
+      <div class="v">{{ num(max_price, 0) }}</div>
+      <div class="n">SAR · {{ t('memo.target_margin') }} {{ num(target_margin_pct, 0) }}%</div>
+    </div>
+    <div class="stat">
+      <div class="k">{{ t('field.score') }}</div>
+      <div class="v">{{ num(memo.score_total, 1) }}</div>
+      <div class="n">{{ t('field.confidence') }} {{ num(memo.data_confidence * 100, 0) }}%</div>
+    </div>
+  </div>
+</div>
+
+{% for section in memo.sections %}
+<div class="panel">
+  <h2>{{ section.heading }}</h2>
+  {% for paragraph in section.body %}
+  <p style="margin:0 0 9px">{{ digits(paragraph) }}</p>
+  {% endfor %}
+  {% if section.figures %}
+  <div class="chips">
+    {% for figure in section.figures %}
+    <span class="chip" title="{{ figure.field_ref }}">{{ figure.label }}: {{ digits(figure.value) }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="panel">
+  <h2>{{ t('memo.figures') }}</h2>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('memo.section') }}</th>
+          <th>{{ t('memo.figure') }}</th>
+          <th class="num">{{ t('memo.value') }}</th>
+          <th>{{ t('memo.field') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for figure in memo.figures %}
+        <tr>
+          <td class="muted">{{ figure.section }}</td>
+          <td>{{ figure.label }}</td>
+          <td class="num">{{ digits(figure.value) }}</td>
+          <td><code>{{ figure.field_ref }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>{{ t('memo.versions') }}</h2>
+  <div class="scroll">
+    <table>
+      <tbody>
+        <tr><td>{{ t('detail.score') }}</td><td><code>{{ memo.scoring_method_version }}</code></td></tr>
+        <tr><td>{{ t('detail.evidence') }}</td><td><code>{{ memo.valuation_method_version }}</code></td></tr>
+        <tr><td>{{ t('detail.cost') }}</td><td><code>{{ memo.cost_method_version }}</code></td></tr>
+        <tr><td>{{ t('memo.title') }}</td><td><code>{{ memo.memo_method_version }} / {{ memo.prompt_version }}</code></td></tr>
+        <tr><td>{{ t('memo.provider') }}</td><td><code>{{ memo.provider }}</code></td></tr>
+        <tr><td>{{ t('memo.generated_at') }}</td><td>{{ digits(memo.generated_at.strftime('%Y-%m-%d %H:%M')) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="margin-bottom:0">{{ t('memo.not_advice') }}</p>
+</div>
+{% endif %}
+
+{% endblock %}
