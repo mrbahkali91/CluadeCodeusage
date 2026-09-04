@@ -69,6 +69,21 @@ transaction-level records with location and area. If this source turns out to be
 aggregate-only, or district-only without area, or paywalled, the product thesis changes and
 the MVP must be rescoped. **Validate from a Saudi-resident egress in week 1.**
 
+**Status 2026-09-04: still unvalidated, and the reason is now diagnosed rather than assumed.**
+The portal resets the TLS connection from this build environment's egress before it sees an HTTP
+request — nine candidate API paths, all identical, while `data.kapsarc.org` answers in 1.3s from
+the same egress. That is a geo/IP block, not an absent service, so nothing here is evidence about
+the data itself. Run `tools/validate_open_data.py` from a Saudi network to settle it; it
+discovers the API shape rather than assuming one, assesses granularity against records only
+(never metadata), and saves every raw response so a connector can be built from observed
+evidence.
+
+This is also the **highest-leverage open question in the codebase**, not merely a documentation
+gap. `TRACK-D.md` measures that district-level index data alone is worth +0.090 of valuation
+confidence, takes the median case past the 0.60 gate (16% → 53% of opportunities scoreable), and
+is simultaneously the fix for the unmet interval-coverage target and the residual −1.06%
+valuation bias. One dataset, three findings.
+
 ---
 
 ### A3. Real Estate Market — `srem.moj.gov.sa`
