@@ -1,0 +1,66 @@
+[Unit]
+Description=SREOI valuation engine (FastAPI)
+Documentation=https://github.com/mrbahkali91/CluadeCodeusage/blob/main/deploy/cloudflare/README.md
+# PostgreSQL is a hard dependency, not a soft one: the engine migrates to head
+# on start, so starting it before the database is up means a failed migration
+# rather than a service that waits.
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+# In [Unit], not [Service]. systemd reads start-rate limiting here and silently
+# IGNORES the key under [Service] -- `systemd-analyze verify` says so, and
+# nothing else does. Placed wrongly it looked set while the default
+# StartLimitBurst=5 still applied, so a database that takes a minute to come
+# back after a reboot would leave this permanently dead with no alert anywhere:
+# exactly the failure the line exists to prevent. 0 disables the limit.
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=sreoi
+Group=sreoi
+WorkingDirectory=/opt/sreoi/platform
+
+# Secrets live here, not in this unit. A unit file is world-readable by design
+# (`systemctl cat` prints it for any user); an EnvironmentFile at 0640 is not.
+EnvironmentFile=/etc/sreoi/engine.env
+
+# 127.0.0.1, never 0.0.0.0. Nothing outside this machine may reach the engine:
+# the API talks to it over loopback, and the only route in from the internet is
+# cloudflared -> API. Binding a public interface here would expose the
+# credential endpoints directly, bypassing every layer in front of them.
+ExecStartPre=/opt/sreoi/platform/.venv/bin/alembic upgrade head
+ExecStart=/opt/sreoi/platform/.venv/bin/uvicorn sreoi_api.main:app --host 127.0.0.1 --port 8000
+
+# ProtectHome=yes hides /home, and ProtectSystem=strict makes /opt read-only.
+# Both runtimes still want a writable HOME -- Bun for its transpiler cache,
+# Python for anything that touches ~/.cache -- and without one they fail with
+# an unhelpful EROFS or EACCES far from the cause. StateDirectory creates
+# /var/lib/sreoi owned by this service's user and makes it writable.
+StateDirectory=sreoi
+Environment=HOME=/var/lib/sreoi
+
+Restart=always
+RestartSec=3
+
+# Hardening. Each of these is a capability the service demonstrably does not
+# need; leaving them on would widen what a remote-code-execution bug could do.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+# ProtectSystem=strict makes everything read-only except what is listed here.
+# The engine writes nothing outside /tmp (PrivateTmp), so nothing is listed.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

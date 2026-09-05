@@ -99,8 +99,18 @@ second hostname. That keeps the browser on one origin, which removes CORS, keeps
 the session cookie first-party, and stops Cloudflare Access from answering an
 XHR with a login redirect `fetch` cannot follow.
 
+No Docker anywhere in it: the origin runs natively under systemd, provisioned
+by one re-runnable script.
+
+```bash
+cd deploy/origin && cp .env.example .env
+sudo ./install.sh --check              # verifies everything, changes nothing
+sudo ./install.sh --install-packages   # first run on a fresh box
+```
+
 Full runbook, including the Access service token that makes the origin
-unreachable except through the proxy:
+unreachable except through the proxy, and an explicit list of what was verified
+by running it versus what still needs your Cloudflare account:
 [deploy/cloudflare/README.md](../deploy/cloudflare/README.md).
 
 ## Fetching real transactions from the Saudi Open Data portal

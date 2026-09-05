@@ -1,0 +1,58 @@
+[Unit]
+Description=SREOI API (NestJS on Bun)
+Documentation=https://github.com/mrbahkali91/CluadeCodeusage/blob/main/deploy/cloudflare/README.md
+After=network-online.target postgresql.service sreoi-engine.service
+Wants=network-online.target sreoi-engine.service
+Requires=postgresql.service
+
+# In [Unit], not [Service]. systemd reads start-rate limiting here and silently
+# IGNORES the key under [Service] -- `systemd-analyze verify` says so, and
+# nothing else does. Placed wrongly it looked set while the default
+# StartLimitBurst=5 still applied, so a database that takes a minute to come
+# back after a reboot would leave this permanently dead with no alert anywhere:
+# exactly the failure the line exists to prevent. 0 disables the limit.
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+User=sreoi
+Group=sreoi
+WorkingDirectory=/opt/sreoi/apps/sreoi-api
+EnvironmentFile=/etc/sreoi/api.env
+
+# Bun, not Node. Every import uses a `.ts` extension and the DI decorators are
+# load-bearing; `node --experimental-strip-types` strips the types and leaves
+# the decorator syntax, which then fails to parse. Bun runs the TypeScript
+# directly, so there is no build artefact that can drift from the source.
+#
+# 127.0.0.1: cloudflared runs on this same host and connects over loopback.
+# There is no reason for this port to exist on any other interface, and a
+# public one would sit in front of the development password issuer.
+ExecStart=/usr/local/bin/bun -b ./src/main.ts
+
+# ProtectHome=yes hides /home, and ProtectSystem=strict makes /opt read-only.
+# Both runtimes still want a writable HOME -- Bun for its transpiler cache,
+# Python for anything that touches ~/.cache -- and without one they fail with
+# an unhelpful EROFS or EACCES far from the cause. StateDirectory creates
+# /var/lib/sreoi owned by this service's user and makes it writable.
+StateDirectory=sreoi
+Environment=HOME=/var/lib/sreoi
+
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
