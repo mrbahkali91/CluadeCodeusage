@@ -33,36 +33,46 @@ enforced architecture boundaries.** Start at **[SLICE-1.md](SLICE-1.md)**, then
 
 ## Running it on a laptop
 
-Docker Desktop is the only prerequisite. Nothing is degraded relative to a real
-deployment: the database is the official PostGIS image, so the map, the spatial
-queries and row-level security behave exactly as they do anywhere else.
+**No Docker required.** One script brings up all three tiers:
 
 ```bash
 git clone -b claude/saudi-realestate-opportunity-platform-n0bn70 <repo-url>
-cd CluadeCodeusage/platform
-make up
+cd CluadeCodeusage
+./run-local.sh
 ```
 
-That builds the image, starts PostGIS, migrates, seeds the reference data and the
-demonstration corpus, creates an organisation and a first user, and serves on
-<http://127.0.0.1:8000>. Sign in at `/auth/signin` as `admin@localhost`; the password is
-printed once in `make logs`, or set `ADMIN_PASSWORD` to choose it. `make down` stops the
-stack and `make down CLEAN=1` also deletes the database volume.
+Then open <http://127.0.0.1:5173> and sign in as `admin@localhost`; the password
+is printed once during startup. Ctrl-C stops everything.
 
-Both ports bind to `127.0.0.1`, not `0.0.0.0`, so neither the app nor the database is
-reachable from your network.
+| Tier | Port | Owns |
+|---|---|---|
+| Python engine | 8000 | valuation, scoring, credentials |
+| NestJS API | 3000 | auth, tenancy, queries |
+| React client | 5173 | **open this one** |
 
-To develop with your own Python instead of in the container:
+You need PostgreSQL 16 with PostGIS, Python 3.11+, Node 20+, pnpm and bun.
+`./run-local.sh --check` verifies all of them, changes nothing, and prints the
+exact install command for whatever is missing on your platform.
 
 ```bash
-make db-only          # PostGIS in Docker, nothing else
-make install          # uv venv + editable install
-make deploy           # migrate, seed, bootstrap identity, serve with reload
+./run-local.sh --check       # verify prerequisites only
+./run-local.sh --reset       # rebuild the schema from migrations first
+./run-local.sh --no-client   # engine + API only
+ADMIN_PASSWORD=secret ./run-local.sh   # choose the password instead of generating one
 ```
 
-There is also a fully native path — `make deploy` alone, no Docker — which needs
-PostgreSQL 16 with PostGIS 3.4 and `pg_trgm` installed locally. It is what this project was
-actually developed against.
+The script provisions what it needs and is safe to re-run: it creates the
+application role and both databases if absent, installs the extensions,
+migrates, seeds, and bootstraps an organisation and first user. It refuses to
+start if any of the three ports is already in use — a health check cannot tell
+this run's server from a stale one, and adopting a stranger's process means
+verifying the whole stack against the wrong build.
+
+Docker is still available if you prefer it (`docker compose up -d`), but it is
+no longer the recommended path. The compose orchestration has never been
+executed; the native script above has.
+
+Two things to know before you run the tests:
 
 Two things to know before you run the tests:
 

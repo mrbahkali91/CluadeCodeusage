@@ -1,4 +1,8 @@
-# The whole platform on a laptop: `docker compose up -d`.
+# The whole platform in containers: `docker compose up -d`.
+#
+# OPTIONAL, and no longer the recommended path. `./run-local.sh` at the repo
+# root runs all three tiers natively with no Docker, and unlike this file it
+# has actually been executed end to end.
 #
 # Nothing is degraded relative to a production deployment -- the database is
 # the real PostGIS image, so the map, the spatial queries and PostgreSQL

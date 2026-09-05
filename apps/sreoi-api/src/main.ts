@@ -36,7 +36,14 @@ export async function bootstrap(): Promise<void> {
 	// this deployment's identity provider may be the development password
 	// issuer.
 	await app.listen(config.port, config.host);
-	logger.log(`listening on https://${config.host}:${config.port}`);
+	/*
+	 * A loopback development server serves plain HTTP. This line said
+	 * `https://` purely to satisfy `no-http-url`, which sent anyone who
+	 * clicked it to a TLS handshake error -- a lint rule is not worth a false
+	 * URL in an operator-facing log.
+	 */
+	// eslint-disable-next-line ryoppippi/no-http-url -- see above
+	logger.log(`listening on http://${config.host}:${config.port}`);
 	logger.log(`valuation engine at ${config.engineUrl}`);
 }
 
