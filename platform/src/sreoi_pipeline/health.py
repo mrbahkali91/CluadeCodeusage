@@ -17,11 +17,13 @@ from sreoi_persistence.models import Source, SourceHealthCheck, SourceRecord
 from sreoi_sources.base import PropertySource
 from sreoi_sources.kapsarc import KapsarcIndexSource
 from sreoi_sources.manual import ManualEntrySource
+from sreoi_sources.opendata import OpenDataTransactionSource
 
 # Beyond this a source is stale even if its last check passed.
 FRESHNESS_BUDGET = {
     "kapsarc_rei": timedelta(days=100),  # quarterly series
     "manual_entry": timedelta(days=7),
+    "open_data_gov_sa": timedelta(days=120),  # quarterly publication
     "synthetic_fixture": timedelta(days=3650),
 }
 DEFAULT_FRESHNESS = timedelta(days=7)
@@ -59,8 +61,14 @@ class SourceStatus:
 
 
 def connectors() -> list[PropertySource]:
-    """Connectors that can be probed live."""
-    return [KapsarcIndexSource(), ManualEntrySource()]
+    """Connectors that can be probed live.
+
+    `run_health_checks` skips any connector without a `Source` row, so listing
+    the open-data portal here does not turn "nobody has configured it" into a
+    red dashboard: it starts being monitored the first time an ingest writes
+    against it, which is also the first moment its silence would cost anything.
+    """
+    return [KapsarcIndexSource(), ManualEntrySource(), OpenDataTransactionSource()]
 
 
 def run_health_checks(session: Session) -> list[SourceHealthCheck]:

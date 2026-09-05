@@ -69,14 +69,46 @@ transaction-level records with location and area. If this source turns out to be
 aggregate-only, or district-only without area, or paywalled, the product thesis changes and
 the MVP must be rescoped. **Validate from a Saudi-resident egress in week 1.**
 
-**Status 2026-09-04: still unvalidated, and the reason is now diagnosed rather than assumed.**
+**Status 2026-09-05: still unvalidated from here, but the connector is now built and waiting.**
 The portal resets the TLS connection from this build environment's egress before it sees an HTTP
 request — nine candidate API paths, all identical, while `data.kapsarc.org` answers in 1.3s from
 the same egress. That is a geo/IP block, not an absent service, so nothing here is evidence about
-the data itself. Run `tools/validate_open_data.py` from a Saudi network to settle it; it
-discovers the API shape rather than assuming one, assesses granularity against records only
-(never metadata), and saves every raw response so a connector can be built from observed
-evidence.
+the data itself.
+
+Rather than wait for an egress I do not have, the connector is written to be run **from a Saudi
+network by someone who can reach the portal**. It is `sreoi_sources.opendata.OpenDataTransactionSource`,
+and it discovers the interface instead of assuming one:
+
+```bash
+export SREOI_OPENDATA_DATASET=c4eb90eb-de47-4996-9eba-8ae503980bcf
+python -m sreoi_pipeline.cli opendata --dry-run --limit 5   # no database required
+python -m sreoi_pipeline.cli opendata --limit 5000          # writes to `transactions`
+```
+
+`--dry-run` tries each candidate API path in turn, unwraps whatever envelope the response uses,
+matches the columns (Arabic or English) to the fields the valuation engine needs, and prints the
+mapping it inferred together with how many records were usable. It writes nothing, so the
+go/no-go question — *is this transaction-level data with price, area, date and property type?* —
+can be answered before a database exists.
+
+Three properties matter more than the fetching:
+
+1. **It refuses rather than guesses.** If it cannot identify a required column it raises with
+   every observed key listed and the exact `export SREOI_OPENDATA_FIELD_…` line to run. Mapping
+   the wrong column into `price` would produce confident, wrong valuations, which is precisely
+   the failure the provenance model exists to prevent.
+2. **It refuses rather than guesses about paths, too.** If no candidate path works, the error
+   names each one tried with its exact failure, so the fix is to copy the path from the browser's
+   network tab into `SREOI_OPENDATA_PATH` — not to reverse-engineer anything.
+3. **Substituted location is counted, not hidden.** Records that carry a district but no
+   coordinates are placed at the district centroid, and the ingest reports how many, records it in
+   the run manifest, and raises it as a validation finding — because comparable *distance* for
+   those rows is an artefact of the centroid, not a measurement.
+
+The source is registered at `source_confidence = 0.85` with `availability = REQUIRES_VALIDATION`,
+and it stays REQUIRES VALIDATION until someone runs the above from a KSA egress and records the
+observed schema in [verification-log.md](verification-log.md). `tools/validate_open_data.py`
+remains the lower-level probe: it saves every raw response so the evidence outlives the run.
 
 This is also the **highest-leverage open question in the codebase**, not merely a documentation
 gap. `TRACK-D.md` measures that district-level index data alone is worth +0.090 of valuation

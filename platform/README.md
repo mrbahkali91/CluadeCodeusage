@@ -74,8 +74,6 @@ executed; the native script above has.
 
 Two things to know before you run the tests:
 
-Two things to know before you run the tests:
-
 - `make check` is the full gate: lint, `mypy --strict`, the architecture contracts, and the
   suite with `SREOI_REQUIRE_DB=1`. That flag turns a missing test database into a hard
   failure. Use it. Plain `make test` *skips* the 209 database-backed tests when PostGIS is
@@ -86,6 +84,48 @@ Two things to know before you run the tests:
   all sixteen tenant policies in place and enforced against nobody. Both the Docker init
   script and `deploy-local.sh` create it `NOSUPERUSER NOBYPASSRLS` and have a superuser
   install the extensions. If you provision the database by hand, do the same.
+
+## Fetching real transactions from the Saudi Open Data portal
+
+Everything the platform values is compared against `transactions`. Seeded data is
+synthetic and labelled as such; the real source is the Ministry of Justice
+transaction dataset on `open.data.gov.sa`. **That portal resets the connection
+from this project's build egress** — a geo/IP block, not an absent service — so
+the connector is written to be run by someone whose network can reach it.
+
+```bash
+export SREOI_OPENDATA_DATASET=c4eb90eb-de47-4996-9eba-8ae503980bcf
+python -m sreoi_pipeline.cli opendata --dry-run --limit 5   # no database needed
+```
+
+`--dry-run` tries each candidate API path, unwraps whatever envelope the response
+uses, matches the columns — Arabic or English — to the fields the valuation engine
+needs, and prints the mapping it inferred plus how many records were usable. It
+writes nothing. That is deliberate: the go/no-go question for the whole MVP is
+*"is this transaction-level data with price, area, date and property type?"*, and
+it should be answerable in seconds without first standing up PostgreSQL.
+
+When the mapping reads correctly, drop the flag to write:
+
+```bash
+python -m sreoi_pipeline.cli opendata --limit 5000
+```
+
+The connector **refuses rather than guesses**. If it cannot identify a required
+column it fails with every observed key listed and the exact
+`export SREOI_OPENDATA_FIELD_…` line to run; if no candidate path works it names
+each path tried with its exact error and points at `SREOI_OPENDATA_PATH`. Mapping
+the wrong column into `price` would produce confident, wrong valuations, which is
+the one failure this codebase is built to make impossible — so there is no silent
+fallback anywhere in it. Every knob is documented in
+[.env.example](.env.example), and none of them need setting on a portal whose
+columns it recognises.
+
+One thing it does that you must not ignore: records with a district but no
+coordinates are placed at their **district centroid**, and the run reports how
+many, on stdout and in the manifest and as a validation finding. Comparable
+*distance* for those rows is an artefact of the centroid, not a measurement, and
+every valuation drawing on them inherits that.
 
 ## Read in this order
 

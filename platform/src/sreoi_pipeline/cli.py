@@ -67,17 +67,93 @@ DEMO_SUBMISSIONS: list[dict[str, object]] = [
 ]
 
 
+def _opendata(*, limit: int, dry_run: bool) -> int:
+    """Fetch transaction-level records from the Saudi Open Data portal.
+
+    Prints what it mapped and what it skipped before writing anything, because
+    the first run of this against a real response is also the moment Assumption
+    A-01 is finally answered -- and the answer might be "this is aggregate data,
+    rescope the MVP".
+    """
+    from datetime import UTC, datetime
+
+    from sreoi_sources.opendata import OpenDataSchemaError, OpenDataTransactionSource
+
+    source = OpenDataTransactionSource()
+    print(f"  portal   {source.base_url}")
+    print(f"  dataset  {source.dataset or '(unset -- see SREOI_OPENDATA_DATASET)'}")
+
+    try:
+        ref = next(iter(source.discover(datetime.now(UTC))))
+        raw = source.fetch(ref, limit=limit)
+        record = source.normalize(raw)
+    except OpenDataSchemaError as exc:
+        print(f"\n  REFUSED: {exc}")
+        return 1
+
+    mapping = record.data["field_mapping"]
+    txns = record.data["transactions"]
+    print(f"  path     {record.data['source_path']}")
+    print("\n  field mapping used:")
+    shown = ("price", "area", "date", "district", "city", "lat", "lon", "property_type", "id")
+    for logical in shown:
+        print(f"    {logical:14} {mapping.get(logical) or '—'}")
+    print(f"\n  usable transactions  {len(txns)}")
+    print(f"  skipped incomplete   {record.data['skipped_incomplete']}")
+
+    result = source.validate(record)
+    if not result.ok:
+        for error in result.errors:
+            print(f"  ! {error}")
+
+    if dry_run:
+        print("\n  --dry-run: nothing written.")
+        return 0 if result.ok else 1
+
+    from sreoi_pipeline.ingest_opendata import store_transactions
+
+    with session_scope() as session:
+        outcome = store_transactions(session, record)
+    print(f"\n  stored {outcome.written} transactions against source '{source.key}'")
+    if outcome.located_by_district_centroid:
+        print(
+            f"  ! {outcome.located_by_district_centroid} of them had no coordinates and were "
+            "placed at their district centroid.\n"
+            "    Comparable DISTANCE for those rows is an artefact of the centroid, not a\n"
+            "    measurement, and every valuation drawing on them inherits that."
+        )
+    if outcome.skipped_no_location:
+        print(f"  ! {outcome.skipped_no_location} skipped: no coordinates and no known district")
+    if outcome.skipped_unparseable_date:
+        print(f"  ! {outcome.skipped_unparseable_date} skipped: unparseable transaction date")
+    return 0 if result.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sreoi")
     parser.add_argument(
         "command",
-        choices=["seed", "demo", "reset-and-demo", "corpus", "health"],
+        choices=["seed", "demo", "reset-and-demo", "corpus", "health", "opendata"],
         help="operation to run",
     )
     parser.add_argument("--offline", action="store_true", help="skip the live KAPSARC index pull")
+    parser.add_argument(
+        "--limit", type=int, default=1000, help="opendata: maximum records to fetch"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="opendata: fetch, map and report, but write nothing to the database",
+    )
     args = parser.parse_args(argv)
 
-    ensure_extensions()
+    # `opendata --dry-run` discovers the portal's schema and writes nothing, so
+    # it must not require a database. Demanding one turned "find out what the
+    # API returns" into "first stand up PostgreSQL", which is backwards: the
+    # discovery step is what tells you whether the data is worth a database.
+    needs_db = not (args.command == "opendata" and args.dry_run)
+    if needs_db:
+        ensure_extensions()
 
     if args.command in {"seed", "reset-and-demo"}:
         with session_scope() as session:
@@ -89,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
 
         with session_scope() as session:
             print(f"corpus: {load_demo(session)}")
+
+    if args.command == "opendata":
+        return _opendata(limit=args.limit, dry_run=args.dry_run)
 
     if args.command == "health":
         from sreoi_pipeline.health import run_health_checks, source_statuses

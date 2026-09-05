@@ -23,6 +23,28 @@ KSA-resident network before any label is changed.
 | `rega.gov.sa/en/open-data/` | **HTTP 503** | Service unavailable at probe time. Retry required. |
 | `rega.gov.sa/en/rega-services/platforms/` | Retrieved | Twelve REGA platforms enumerated (Aqari, FAL, Real Estate Contributions, Real Estate Indicators, Ejar, Wafi off-plan, Geospatial Real Estate Portal, Real Estate Registry, Saudi Real Estate Institute, Arbitration Center, Mullak, non-Saudi ownership). **No mention of any API, open data repository, or third-party integration mechanism.** |
 
+## Connector readiness — 2026-09-05
+
+A-01 could not be settled from this egress, so the work that *could* be done without the portal
+was done: the connector itself, verified end to end against a local stub that behaves like the
+portal is reported to behave.
+
+| What was exercised | Result |
+|---|---|
+| Path discovery | Stub served **only** the CKAN-style path. The connector fell through four candidate paths and found it, unconfigured. |
+| Envelope discovery | Records nested under `result.records` were unwrapped without configuration. |
+| Column matching, Arabic | `سعر / مساحة / تاريخ / الحي / نوع` were matched to price, area, date, district and property type with no field-mapping variables set. |
+| Refusal on ambiguity | With a required column absent, `normalize()` raises listing every observed key and the exact `export SREOI_OPENDATA_FIELD_…` remedy. It never falls back to a positional or best-guess mapping. |
+| Refusal on unreachable paths | Against the real (blocked) portal it names each of the five paths tried with its exact error and the `SREOI_OPENDATA_PATH` remedy. |
+| Persistence | 12 rows written with correct PostGIS geometry; all 12 lacked coordinates and were placed at their district centroid, and the run said so on stdout, in the manifest, and as a validation finding. |
+| Tests | 28 tests, all network-free, in `tests/test_opendata.py`. |
+
+**What this is not.** A stub proves the connector's behaviour, not the portal's data. Every
+column name in the stub is one I chose. A-01 remains **UNVALIDATED**: nothing here is evidence
+that the real dataset is transaction-level, or that it carries area, or that its licence permits
+commercial derivative use. The first real response may still say "rescope the MVP", and
+`--dry-run` is built so that it says so in seconds and without a database.
+
 ## Documentary evidence (read, not observed)
 
 | Claim | Source of claim | Weight |

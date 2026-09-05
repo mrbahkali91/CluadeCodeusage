@@ -8,12 +8,15 @@ from sreoi_sources.base import (
 )
 from sreoi_sources.kapsarc import KapsarcIndexSource
 from sreoi_sources.manual import ManualEntrySource
+from sreoi_sources.opendata import OpenDataSchemaError, OpenDataTransactionSource
 
 __all__ = [
     "AvailabilityLabel",
     "KapsarcIndexSource",
     "LegalAccessMethod",
     "ManualEntrySource",
+    "OpenDataSchemaError",
+    "OpenDataTransactionSource",
     "PropertySource",
     "SourceRegistrationError",
 ]
