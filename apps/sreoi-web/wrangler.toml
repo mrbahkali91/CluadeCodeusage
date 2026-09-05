@@ -1,0 +1,17 @@
+# Cloudflare Pages project for the SREOI client.
+#
+# `pages_build_output_dir` makes `wrangler pages deploy` use the built assets
+# in dist/ and the Functions in functions/ without further flags.
+#
+# NOTHING SECRET LIVES IN THIS FILE. ORIGIN_URL and the Access service token
+# are set with `wrangler pages secret put`, or in the dashboard, per
+# environment. A committed token would be a credential in git history, and
+# rotating it would not remove it from there.
+name = "sreoi-web"
+compatibility_date = "2026-09-05"
+pages_build_output_dir = "dist"
+
+# Runtime configuration, set as secrets rather than here:
+#   ORIGIN_URL                    https://origin.bahkali-tek.com
+#   ORIGIN_ACCESS_CLIENT_ID       <service token id>.access
+#   ORIGIN_ACCESS_CLIENT_SECRET   <service token secret>

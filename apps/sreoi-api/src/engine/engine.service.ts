@@ -83,6 +83,39 @@ export class EngineService {
 		return response.json();
 	}
 
+	/**
+	 * Relay a credential-issuing POST to the engine and hand back its raw parts.
+	 *
+	 * Unlike `get`, a non-2xx is NOT an error here. `/auth/login` answers 401
+	 * for a wrong password and 403 when password login is disabled, and both
+	 * are meaningful answers the browser must see. Mapping them to 503 would
+	 * tell the user the service is down when in fact their password is wrong.
+	 *
+	 * `Set-Cookie` is returned for the caller to relay, because the engine sets
+	 * the session cookie for ITS OWN host. Once the browser talks to the API
+	 * origin instead, the cookie has to be re-emitted there or the session is
+	 * established on a host the browser will never visit again.
+	 */
+	async relayPost(
+		path: string,
+		body: string,
+		headers: Record<string, string>,
+	): Promise<{ status: number; setCookie: string[]; body: string; contentType: string }> {
+		const response = await this.call(path, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', ...headers },
+			body,
+		});
+		return {
+			status: response.status,
+			// getSetCookie() rather than get('set-cookie'): a joined header string
+			// cannot be split safely, because cookie Expires values contain commas.
+			setCookie: response.headers.getSetCookie(),
+			body: await response.text(),
+			contentType: response.headers.get('content-type') ?? 'application/json',
+		};
+	}
+
 	private credentialHeaders(credential: Credential): Record<string, string> {
 		switch (credential.kind) {
 			case 'bearer':

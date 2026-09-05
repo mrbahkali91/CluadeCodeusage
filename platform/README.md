@@ -85,6 +85,24 @@ Two things to know before you run the tests:
   script and `deploy-local.sh` create it `NOSUPERUSER NOBYPASSRLS` and have a superuser
   install the extensions. If you provision the database by hand, do the same.
 
+## Deploying it
+
+Cloudflare cannot host this stack -- Workers and Pages Functions have no
+filesystem and no long-lived TCP, and D1 is SQLite with no spatial types, so
+the PostGIS geometry the map is drawn from has nowhere to run. The deployment
+is therefore split: the client on Cloudflare Pages, and the API, engine and
+PostGIS on a server that publishes **no ports at all** and reaches Cloudflare
+outbound through a tunnel.
+
+`/api/*` and `/auth/*` are proxied by a Pages Function rather than pointed at a
+second hostname. That keeps the browser on one origin, which removes CORS, keeps
+the session cookie first-party, and stops Cloudflare Access from answering an
+XHR with a login redirect `fetch` cannot follow.
+
+Full runbook, including the Access service token that makes the origin
+unreachable except through the proxy:
+[deploy/cloudflare/README.md](../deploy/cloudflare/README.md).
+
 ## Fetching real transactions from the Saudi Open Data portal
 
 Everything the platform values is compared against `transactions`. Seeded data is

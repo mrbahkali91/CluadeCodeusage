@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminController } from './admin/admin.controller.ts';
+import { AuthController } from './auth/auth.controller.ts';
 import { AuthGuard } from './auth/auth.guard.ts';
 import { DbService } from './db/db.service.ts';
 import { EngineService } from './engine/engine.service.ts';
@@ -12,7 +13,13 @@ import { OpportunitiesController } from './opportunities/opportunities.controlle
 import { OpportunitiesService } from './opportunities/opportunities.service.ts';
 
 @Module({
-	controllers: [HealthController, OpportunitiesController, MapController, AdminController],
+	controllers: [
+		HealthController,
+		AuthController,
+		OpportunitiesController,
+		MapController,
+		AdminController,
+	],
 	providers: [
 		DbService,
 		EngineService,

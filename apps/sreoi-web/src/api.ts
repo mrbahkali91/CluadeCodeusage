@@ -171,6 +171,40 @@ async function get<T>(path: string): Promise<T> {
 	return response.json() as Promise<T>;
 }
 
+/**
+ * Exchange a password for a session, against this origin.
+ *
+ * Deliberately posts to this app's own `/auth/login` rather than to the
+ * engine's. The engine sets the session cookie for ITS host; in development
+ * both answered on 127.0.0.1 and cookies ignore the port, so signing in on the
+ * engine's own page happened to authenticate this client too. Deployed, the
+ * browser never sees the engine, so that coincidence disappears -- and there
+ * was no sign-in form here at all. The API relays the exchange and re-emits
+ * the cookie on the origin the browser is actually using.
+ *
+ * Returns the failure rather than throwing it: a wrong password is an expected
+ * answer this form has to render, not an exception.
+ */
+export async function signIn(
+	email: string,
+	password: string,
+): Promise<{ ok: true } | { ok: false; status: number }> {
+	const response = await fetch('/auth/login', {
+		method: 'POST',
+		credentials: 'same-origin',
+		headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+		body: JSON.stringify({ email, password }),
+	});
+	// The body carries the token too, and is deliberately not read or stored:
+	// the session cookie is HttpOnly, so keeping a copy in JavaScript would
+	// hand any injected script the credential the cookie exists to protect.
+	return response.ok ? { ok: true } : { ok: false, status: response.status };
+}
+
+export async function signOut(): Promise<void> {
+	await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+}
+
 export interface SearchParams {
 	districts?: string[];
 	types?: string[];

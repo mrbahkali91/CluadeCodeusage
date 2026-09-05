@@ -1,0 +1,31 @@
+# NestJS API.
+#
+# Bun, not Node. `src/main.ts` and every import use `.ts` extensions and
+# TypeScript decorators, and Node's `--experimental-strip-types` cannot
+# transform decorators -- it strips types and leaves the decorator syntax,
+# which then fails to parse. Bun runs the TypeScript directly, so there is no
+# build step and no compiled output to drift from the source.
+FROM oven/bun:1-alpine
+
+WORKDIR /app
+
+# pnpm workspace: the API's dependencies resolve through the root lockfile and
+# the shared catalog, so the whole workspace manifest set is needed to install
+# reproducibly. Copied before the source so the layer caches across edits.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/sreoi-api/package.json ./apps/sreoi-api/
+
+RUN apk add --no-cache nodejs npm \
+    && npm install -g pnpm@10 \
+    && pnpm install --filter @sreoi/api --frozen-lockfile --prod
+
+COPY apps/sreoi-api ./apps/sreoi-api
+
+# Least privilege. The bun image ships a `bun` user; run as it rather than root.
+USER bun
+
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1
+
+CMD ["bun", "-b", "./apps/sreoi-api/src/main.ts"]

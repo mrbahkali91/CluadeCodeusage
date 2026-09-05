@@ -21,6 +21,12 @@ const schema = z.object({
 	engineUrl: z.string().url().default('http://127.0.0.1:8000'),
 	engineTimeoutMs: z.coerce.number().int().positive().default(10_000),
 	corsOrigin: z.string().default('http://127.0.0.1:5173'),
+	// How many reverse proxies sit in front of this process. 0 means none, and
+	// is the only safe default: with `trust proxy` on, an `X-Forwarded-For`
+	// header from anyone becomes `req.ip`, so a client could name any address
+	// it liked and evict another client's sign-in lockout. Set it to the real
+	// hop count for the deployment -- 1 behind a single Cloudflare tunnel.
+	trustProxy: z.coerce.number().int().min(0).max(8).default(0),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -35,6 +41,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		engineUrl: env.SREOI_ENGINE_URL,
 		engineTimeoutMs: env.SREOI_ENGINE_TIMEOUT_MS,
 		corsOrigin: env.SREOI_CORS_ORIGIN,
+		trustProxy: env.SREOI_TRUST_PROXY,
 	});
 	if (!parsed.success) {
 		throw new ConfigurationError(

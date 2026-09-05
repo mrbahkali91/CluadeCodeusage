@@ -2,11 +2,12 @@ import type { Facets, Opportunity } from './api.ts';
 import type { Locale } from './i18n.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { AdminView } from './AdminView.tsx';
-import { ApiError, fetchFacets, searchOpportunities } from './api.ts';
+import { ApiError, fetchFacets, searchOpportunities, signOut } from './api.ts';
 import { DetailView } from './DetailView.tsx';
 import { direction, formatNumber, t } from './i18n.ts';
 import { MapView } from './MapView.tsx';
 import { OpportunityCard } from './OpportunityCard.tsx';
+import { SignIn } from './SignIn.tsx';
 
 type View = 'list' | 'map' | 'detail' | 'admin';
 
@@ -106,6 +107,22 @@ export function App(): React.JSX.Element {
 					>
 						{t(locale, 'nav.admin')}
 					</button>
+					{status !== 'unauthorised' && (
+						<button
+							type="button"
+							onClick={() => {
+								void signOut().then(() => {
+									// Straight to 'unauthorised' rather than re-fetching to
+									// discover the 401: the cookie is already gone.
+									setStatus('unauthorised');
+									setSelected(null);
+									setView('list');
+								});
+							}}
+						>
+							{t(locale, 'nav.signout')}
+						</button>
+					)}
 					<button
 						type="button"
 						className="pill"
@@ -118,11 +135,28 @@ export function App(): React.JSX.Element {
 			</header>
 
 			<main>
-				<div className="banner" role="alert">
-					{t(locale, 'synthetic')}
-				</div>
+				{status === 'unauthorised' && (
+					<SignIn
+						locale={locale}
+						onSignedIn={() => {
+							// Re-run the load that produced the 401 rather than
+							// reloading the page: the filters the reader had already
+							// set survive the sign-in.
+							void load();
+							void fetchFacets().then(setFacets).catch(() => {
+								// Same deliberate swallow as the mount-time fetch.
+							});
+						}}
+					/>
+				)}
 
-				{view === 'list' && (
+				{status !== 'unauthorised' && (
+					<div className="banner" role="alert">
+						{t(locale, 'synthetic')}
+					</div>
+				)}
+
+				{view === 'list' && status !== 'unauthorised' && (
 					<>
 						<section className="panel">
 							<h2>{t(locale, 'filters.heading')}</h2>
@@ -192,9 +226,6 @@ export function App(): React.JSX.Element {
 
 						{status === 'loading' && <p className="muted">{t(locale, 'loading')}</p>}
 						{status === 'error' && <div className="refused">{t(locale, 'error')}</div>}
-						{status === 'unauthorised' && (
-							<div className="refused">{t(locale, 'signin.required')}</div>
-						)}
 
 						{status === 'ready' && (
 							<>
@@ -227,7 +258,7 @@ export function App(): React.JSX.Element {
 					</>
 				)}
 
-				{view === 'detail' && selected !== null && (
+				{view === 'detail' && selected !== null && status !== 'unauthorised' && (
 					<DetailView
 						id={selected}
 						locale={locale}
@@ -238,9 +269,9 @@ export function App(): React.JSX.Element {
 					/>
 				)}
 
-				{view === 'admin' && <AdminView locale={locale} />}
+				{view === 'admin' && status !== 'unauthorised' && <AdminView locale={locale} />}
 
-				{view === 'map' && (
+				{view === 'map' && status !== 'unauthorised' && (
 					<section className="panel">
 						<MapView locale={locale} />
 						<div className="legend">

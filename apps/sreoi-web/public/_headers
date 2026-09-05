@@ -1,0 +1,23 @@
+# Security headers for every page Cloudflare Pages serves.
+#
+# The engine sets its own CSP for the pages it serves. Pages serves the built
+# SPA, so it needs its own -- and it must be stricter, because this origin is
+# public while the engine's is not.
+#
+# MapLibre's worker is created from a blob: URL. Without worker-src it falls
+# back to script-src, the worker is blocked, and the map renders blank with
+# HTTP 200 and nothing but a console error. That exact failure has happened
+# in this project once already.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Hashed bundles are immutable; index.html must never be, or a deploy is
+# invisible until the cache expires.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

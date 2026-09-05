@@ -1,0 +1,8 @@
+# Client-side routing: the app is one page and holds its own view state, so any
+# path that is not a file must return index.html rather than a 404.
+#
+# /api and /auth are NOT listed. They are handled by Pages Functions, which run
+# before this file is consulted; adding them here would be inert at best and,
+# if the Functions ever failed to deploy, would quietly answer API calls with
+# index.html instead of failing loudly.
+/*  /index.html  200
