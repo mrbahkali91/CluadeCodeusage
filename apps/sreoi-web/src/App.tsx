@@ -1,13 +1,14 @@
 import type { Facets, Opportunity } from './api.ts';
 import type { Locale } from './i18n.ts';
 import { useCallback, useEffect, useState } from 'react';
+import { AdminView } from './AdminView.tsx';
 import { ApiError, fetchFacets, searchOpportunities } from './api.ts';
 import { DetailView } from './DetailView.tsx';
 import { direction, formatNumber, t } from './i18n.ts';
 import { MapView } from './MapView.tsx';
 import { OpportunityCard } from './OpportunityCard.tsx';
 
-type View = 'list' | 'map' | 'detail';
+type View = 'list' | 'map' | 'detail' | 'admin';
 
 export function App(): React.JSX.Element {
 	const [locale, setLocale] = useState<Locale>('en');
@@ -97,6 +98,13 @@ export function App(): React.JSX.Element {
 						onClick={() => setView('map')}
 					>
 						{t(locale, 'nav.map')}
+					</button>
+					<button
+						type="button"
+						className={view === 'admin' ? 'on' : ''}
+						onClick={() => setView('admin')}
+					>
+						{t(locale, 'nav.admin')}
 					</button>
 					<button
 						type="button"
@@ -229,6 +237,8 @@ export function App(): React.JSX.Element {
 						}}
 					/>
 				)}
+
+				{view === 'admin' && <AdminView locale={locale} />}
 
 				{view === 'map' && (
 					<section className="panel">

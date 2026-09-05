@@ -93,6 +93,57 @@ export interface DetailResponse {
 	timeline: TimelineEvent[];
 }
 
+export interface QualityFlag {
+	key: string;
+	label: string;
+	severity: string;
+	value: number;
+	warn_at: number | null;
+	fail_at: number | null;
+	note: string | null;
+}
+
+export interface ConfidenceBucket {
+	label: string;
+	lower: number;
+	upper: number;
+	count: number;
+	share: number;
+}
+
+export interface CheckStats {
+	applicable: number;
+	verified: number;
+	pass_rate: number;
+}
+
+export interface QualityReport {
+	method_version: string;
+	captured_at: string | null;
+	evidence_is_synthetic: boolean;
+	overall_status: string;
+	counts: { opportunities: number; properties: number };
+	field_completeness: { overall: number; by_field: Record<string, number> };
+	confidence_distribution: {
+		data_confidence: { count: number; mean: number; buckets: ConfidenceBucket[] };
+	};
+	provenance: { by_basis: Record<string, number>; total: number; unknown_share: number };
+	verification: { by_check_type: Record<string, CheckStats> };
+	flags: QualityFlag[];
+}
+
+export interface SourceRow {
+	key: string;
+	name: string;
+	legal_access_method: string;
+	data_license: string | null;
+	availability_label: string;
+	source_confidence: number;
+	is_synthetic: boolean;
+	enabled: boolean;
+	record_count: number;
+}
+
 export interface Facets {
 	districts: { nameEn: string; nameAr: string }[];
 	types: string[];
@@ -155,6 +206,14 @@ export async function searchOpportunities(params: SearchParams): Promise<SearchR
 
 export async function fetchOpportunity(id: string): Promise<DetailResponse> {
 	return get<DetailResponse>(`/api/v1/opportunities/${encodeURIComponent(id)}`);
+}
+
+export async function fetchQuality(): Promise<QualityReport> {
+	return get<QualityReport>('/api/v1/admin/quality');
+}
+
+export async function fetchSources(): Promise<SourceRow[]> {
+	return get<SourceRow[]>('/api/v1/admin/sources');
 }
 
 export async function fetchFacets(): Promise<Facets> {
