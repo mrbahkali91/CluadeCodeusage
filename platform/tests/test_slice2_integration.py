@@ -186,3 +186,36 @@ def test_signal_detection_handles_arabic_and_english() -> None:
     assert "URGENT" in detect_signals({"description": "عاجل للبيع"})
     assert "AUCTION" in detect_signals({"opportunity_type": "AUCTION"})
     assert detect_signals({"description": "spacious family home"}) == []
+
+
+def test_re_ingesting_identical_content_leaves_exactly_one_current_score(
+    isolated: None, session: Session
+) -> None:
+    """`superseded_at IS NULL` must identify one row, because every reader joins on it.
+
+    Superseding used to be the caller's job, and the "identical content is a
+    no-op" path in `ingest_manual_submission` re-evaluated without doing it. Two
+    live rows then fanned a duplicate out of every join: 56 opportunities
+    rendered as 95 map markers, LIMIT truncated an arbitrary subset, and the
+    list view emitted duplicate React keys. Nothing raised.
+    """
+    payload = {**BASE, "external_id": "dup-1", "title": "Assignment Sidrah C-101"}
+    first, _ = ingest_manual_submission(session, payload)
+    ingest_manual_submission(session, dict(payload))
+    ingest_manual_submission(session, dict(payload))
+    session.flush()
+
+    live = session.scalars(
+        select(OpportunityScoreRow).where(
+            OpportunityScoreRow.opportunity_id == first.id,
+            OpportunityScoreRow.superseded_at.is_(None),
+        )
+    ).all()
+    assert len(live) == 1
+
+    # History is retained rather than updated away: the superseded rows are
+    # still there, still readable, just no longer current.
+    everything = session.scalars(
+        select(OpportunityScoreRow).where(OpportunityScoreRow.opportunity_id == first.id)
+    ).all()
+    assert len(everything) == 3

@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sreoi_agents.provider import DeterministicProvider
@@ -371,6 +372,27 @@ def evaluate_opportunity(
         confidence=confidence_inputs,
         profile=profile,
     )
+
+    # Supersede here, at the write, not in the caller. Superseding used to be
+    # the caller's job in `ingest.py`, and the "identical content is a no-op"
+    # re-evaluation path did not do it -- so running the seed twice left two
+    # rows with `superseded_at IS NULL` for the same opportunity. Every reader
+    # treats that predicate as "the current score", so each duplicate fanned a
+    # row out of every join: 56 opportunities became 95 map markers, with
+    # arbitrary rows truncated by LIMIT and duplicate React keys in the list.
+    # A single current row is an invariant of this table, so it is enforced
+    # where the row is created and, since migration ea3f7d5c91b2, by a partial
+    # unique index that makes a second live row impossible rather than merely
+    # unintended.
+    superseded = datetime.now(UTC)
+    for stale in session.scalars(
+        select(OpportunityScoreRow).where(
+            OpportunityScoreRow.opportunity_id == opportunity.id,
+            OpportunityScoreRow.superseded_at.is_(None),
+        )
+    ):
+        stale.superseded_at = superseded
+    session.flush()
 
     score_row = OpportunityScoreRow(
         opportunity_id=opportunity.id,

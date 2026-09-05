@@ -450,3 +450,19 @@ button.cardlink:hover {
 	white-space: nowrap;
 	border: 0;
 }
+
+/* District names. There is no glyph server, so labels are DOM markers rather
+   than a symbol layer; `pointer-events: none` keeps them from swallowing
+   clicks meant for the score markers underneath. */
+.map-label {
+	pointer-events: none;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: #1d3a2b;
+	background: rgba(255, 255, 255, 0.78);
+	border: 1px solid rgba(47, 125, 91, 0.35);
+	border-radius: 4px;
+	padding: 1px 6px;
+	white-space: nowrap;
+}

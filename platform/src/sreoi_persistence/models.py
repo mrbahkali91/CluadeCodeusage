@@ -26,6 +26,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -261,9 +262,23 @@ class CostLineItemRow(Base):
 
 
 class OpportunityScoreRow(Base):
-    """Append-only. A re-score inserts and supersedes; it never updates."""
+    """Append-only. A re-score inserts and supersedes; it never updates.
+
+    At most one row per opportunity may be current. Every reader joins on
+    `superseded_at IS NULL` and would fan out silently if two rows qualified,
+    so the rule is a partial unique index rather than a convention -- see
+    migration ea3f7d5c91b2 for what happened when it was only a convention.
+    """
 
     __tablename__ = "opportunity_scores"
+    __table_args__ = (
+        Index(
+            "uq_opportunity_scores_one_current",
+            "opportunity_id",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
     opportunity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("opportunities.id"))

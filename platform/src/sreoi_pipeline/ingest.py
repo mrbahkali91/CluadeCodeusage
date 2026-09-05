@@ -21,7 +21,6 @@ from sreoi_persistence.models import (
     Listing,
     ListingSnapshot,
     Opportunity,
-    OpportunityScoreRow,
     Property,
     SourceRecord,
 )
@@ -263,7 +262,6 @@ def ingest_manual_submission(
 
     result = evaluate_opportunity(session, opportunity, data)
     if result.score is not None:
-        _supersede_older_scores(session, opportunity.id)
         add_timeline_event(
             session,
             prop.id,
@@ -277,23 +275,6 @@ def ingest_manual_submission(
             source_record_id=record.id,
         )
     return opportunity, result
-
-
-def _supersede_older_scores(session: Session, opportunity_id: uuid.UUID) -> None:
-    """Keep exactly one current score row; history is retained, never updated away."""
-    rows = list(
-        session.scalars(
-            select(OpportunityScoreRow)
-            .where(
-                OpportunityScoreRow.opportunity_id == opportunity_id,
-                OpportunityScoreRow.superseded_at.is_(None),
-            )
-            .order_by(OpportunityScoreRow.computed_at.desc())
-        )
-    )
-    now = datetime.now(UTC)
-    for stale in rows[1:]:
-        stale.superseded_at = now
 
 
 def _record_listing(
