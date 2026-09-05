@@ -6,6 +6,7 @@ import { EngineService } from './engine/engine.service.ts';
 import { HealthController } from './health/health.controller.ts';
 import { MapController } from './map/map.controller.ts';
 import { MapService } from './map/map.service.ts';
+import { DetailService } from './opportunities/detail.service.ts';
 import { OpportunitiesController } from './opportunities/opportunities.controller.ts';
 import { OpportunitiesService } from './opportunities/opportunities.service.ts';
 
@@ -15,6 +16,7 @@ import { OpportunitiesService } from './opportunities/opportunities.service.ts';
 		DbService,
 		EngineService,
 		OpportunitiesService,
+		DetailService,
 		MapService,
 		// Registered globally so protection is the default and exposure is the
 		// exception. See auth.guard.ts for why that direction matters.

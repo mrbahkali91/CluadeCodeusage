@@ -2,15 +2,17 @@ import type { Facets, Opportunity } from './api.ts';
 import type { Locale } from './i18n.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, fetchFacets, searchOpportunities } from './api.ts';
+import { DetailView } from './DetailView.tsx';
 import { direction, formatNumber, t } from './i18n.ts';
 import { MapView } from './MapView.tsx';
 import { OpportunityCard } from './OpportunityCard.tsx';
 
-type View = 'list' | 'map';
+type View = 'list' | 'map' | 'detail';
 
 export function App(): React.JSX.Element {
 	const [locale, setLocale] = useState<Locale>('en');
 	const [view, setView] = useState<View>('list');
+	const [selected, setSelected] = useState<string | null>(null);
 	const [facets, setFacets] = useState<Facets | null>(null);
 	const [rows, setRows] = useState<Opportunity[]>([]);
 	const [count, setCount] = useState(0);
@@ -81,8 +83,11 @@ export function App(): React.JSX.Element {
 				<nav>
 					<button
 						type="button"
-						className={view === 'list' ? 'on' : ''}
-						onClick={() => setView('list')}
+						className={view === 'list' || view === 'detail' ? 'on' : ''}
+						onClick={() => {
+							setSelected(null);
+							setView('list');
+						}}
 					>
 						{t(locale, 'nav.opportunities')}
 					</button>
@@ -197,13 +202,32 @@ export function App(): React.JSX.Element {
 									: (
 											<div className="cards">
 												{rows.map(row => (
-													<OpportunityCard key={row.id} opportunity={row} locale={locale} />
+													<OpportunityCard
+														key={row.id}
+														opportunity={row}
+														locale={locale}
+														onOpen={(id) => {
+															setSelected(id);
+															setView('detail');
+														}}
+													/>
 												))}
 											</div>
 										)}
 							</>
 						)}
 					</>
+				)}
+
+				{view === 'detail' && selected !== null && (
+					<DetailView
+						id={selected}
+						locale={locale}
+						onBack={() => {
+							setSelected(null);
+							setView('list');
+						}}
+					/>
 				)}
 
 				{view === 'map' && (

@@ -184,6 +184,13 @@ function num(value: unknown): number | null {
 	if (value === null || value === undefined) {
 		return null;
 	}
+	// `Number('')` and `Number('   ')` are 0, not NaN. Without this guard an
+	// empty amount reads as *free*, which is the exact failure the true-cost
+	// invariant exists to prevent: an unknown material line must refuse the
+	// discount, never make the acquisition look cheaper. Caught by its own test.
+	if (typeof value === 'string' && value.trim() === '') {
+		return null;
+	}
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : null;
 }
@@ -232,6 +239,10 @@ if (import.meta.vitest != null) {
 			expect(num(null)).toBeNull();
 			expect(num(undefined)).toBeNull();
 			expect(num('not a number')).toBeNull();
+			// Number('') is 0, not NaN -- an empty column would otherwise read as a
+			// real score of zero.
+			expect(num('')).toBeNull();
+			expect(num('   ')).toBeNull();
 		});
 
 		it('parses the strings pg returns for numeric columns', () => {

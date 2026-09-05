@@ -2,7 +2,16 @@
 
 import type { AuthedRequest } from '../auth/auth.guard.ts';
 import type { OpportunityFilters, SortKey } from './opportunities.service.ts';
-import { BadRequestException, Controller, Get, Param, Query, Req } from '@nestjs/common';
+import {
+	BadRequestException,
+	Controller,
+	Get,
+	NotFoundException,
+	Param,
+	Query,
+	Req,
+} from '@nestjs/common';
+import { DetailService } from './detail.service.ts';
 import { isSortKey, OpportunitiesService } from './opportunities.service.ts';
 
 const MAX_LIMIT = 200;
@@ -10,7 +19,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('api/v1')
 export class OpportunitiesController {
-	constructor(private readonly opportunities: OpportunitiesService) {}
+	constructor(
+		private readonly opportunities: OpportunitiesService,
+		private readonly evidence: DetailService,
+	) {}
 
 	@Get('search/opportunities')
 	async search(
@@ -42,9 +54,19 @@ export class OpportunitiesController {
 		}
 		const row = await this.opportunities.byId(id);
 		if (row === null) {
-			throw new BadRequestException('no such opportunity');
+			throw new NotFoundException('no such opportunity');
 		}
-		return { evidence_is_synthetic: true, opportunity: row };
+		const evidence = await this.evidence.evidence(id);
+		return {
+			// The caveat leads, as it does on the list: a client cannot render the
+			// derivation without having received the provenance first.
+			evidence_is_synthetic: true,
+			caveat:
+				'Comparable transactions come from a synthetic fixture corpus, not '
+				+ 'registered Saudi sales. The engine is real; the evidence is generated.',
+			opportunity: row,
+			...evidence,
+		};
 	}
 
 	@Get('facets')

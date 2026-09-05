@@ -27,6 +27,72 @@ export interface SearchResponse {
 	results: Opportunity[];
 }
 
+export interface ScoreComponent {
+	dimension: string;
+	rawValue: number | null;
+	normalizedScore: number | null;
+	weight: number | null;
+	contribution: number | null;
+}
+
+export interface CostLine {
+	kind: string;
+	amount: number | null;
+	basis: string;
+	material: boolean;
+	note: string | null;
+}
+
+export interface Comparable {
+	transactionId: string;
+	weight: number | null;
+	distanceM: number | null;
+	adjustedPricePerSqm: number | null;
+	excludedReason: string | null;
+}
+
+export interface VerificationCheck {
+	checkType: string;
+	status: string;
+	evidence: unknown;
+	checkedAt: string | null;
+}
+
+export interface TimelineEvent {
+	eventType: string;
+	summary: string | null;
+	occurredAt: string | null;
+}
+
+export interface Valuation {
+	fairValueLow: number | null;
+	fairValueBase: number | null;
+	fairValueHigh: number | null;
+	basePricePerSqm: number | null;
+	comparableCount: number | null;
+	effectiveN: number | null;
+	comparableQuality: number | null;
+	confidence: number | null;
+	indexTier: string | null;
+	methodVersion: string | null;
+}
+
+export interface DetailResponse {
+	evidence_is_synthetic: boolean;
+	caveat: string;
+	opportunity: Opportunity;
+	score: {
+		components: ScoreComponent[];
+		weightProfileVersion: string | null;
+		methodVersion: string | null;
+	};
+	valuation: Valuation | null;
+	cost: { total: number | null; isComplete: boolean | null; lines: CostLine[] } | null;
+	comparables: Comparable[];
+	verification: VerificationCheck[];
+	timeline: TimelineEvent[];
+}
+
 export interface Facets {
 	districts: { nameEn: string; nameAr: string }[];
 	types: string[];
@@ -85,6 +151,10 @@ export function buildSearchQuery(params: SearchParams): string {
 
 export async function searchOpportunities(params: SearchParams): Promise<SearchResponse> {
 	return get<SearchResponse>(`/api/v1/search/opportunities${buildSearchQuery(params)}`);
+}
+
+export async function fetchOpportunity(id: string): Promise<DetailResponse> {
+	return get<DetailResponse>(`/api/v1/opportunities/${encodeURIComponent(id)}`);
 }
 
 export async function fetchFacets(): Promise<Facets> {

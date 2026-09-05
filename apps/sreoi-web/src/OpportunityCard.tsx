@@ -25,9 +25,11 @@ export function classificationTone(classification: string | null): 'good' | 'war
 export function OpportunityCard({
 	opportunity,
 	locale,
+	onOpen,
 }: {
 	opportunity: Opportunity;
 	locale: Locale;
+	onOpen: (id: string) => void;
 }): React.JSX.Element {
 	const district
 		= locale === 'ar' ? (opportunity.districtAr ?? opportunity.district) : opportunity.district;
@@ -35,7 +37,13 @@ export function OpportunityCard({
 
 	return (
 		<article className="card">
-			<h3>{opportunity.title}</h3>
+			{/* A button rather than a div with onClick, so the card is reachable by
+			    keyboard and announced as actionable by a screen reader. */}
+			<h3>
+				<button type="button" className="cardlink" onClick={() => onOpen(opportunity.id)}>
+					{opportunity.title}
+				</button>
+			</h3>
 			<div className="meta">
 				{district ?? '—'}
 				{' · '}
